@@ -8,17 +8,24 @@ datasource db {
 }
 
 enum Platform {
-  twitch
-  youtube
-  facebook
-  custom
+  TWITCH
+  YOUTUBE
+  FACEBOOK
+  CUSTOM
+}
+
+enum StreamSessionStatus {
+  STARTING
+  LIVE
+  ERROR
+  STOPPED
 }
 
 enum OutputSessionStatus {
-  starting
-  live
-  error
-  stopped
+  STARTING
+  LIVE
+  ERROR
+  STOPPED
 }
 
 model User {
@@ -26,36 +33,36 @@ model User {
   email        String    @unique
   passwordHash String
   streamKey    String    @unique @default(uuid())
-  tenantId     String?
   createdAt    DateTime  @default(now())
+  deletedAt    DateTime?
 
   outputs        Output[]
   streamSessions StreamSession[]
-
-  @@index([streamKey])
 }
 
 model Output {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   userId    String
   name      String
   platform  Platform
   rtmpUrl   String
   streamKey String
-  enabled   Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  enabled   Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   outputSessions OutputSession[]
 
-  @@index([userId])
+  @@unique([userId, streamKey])
 }
 
 model StreamSession {
-  id          String    @id @default(uuid())
+  id          String              @id @default(uuid())
   userId      String
-  startedAt   DateTime  @default(now())
+  status      StreamSessionStatus @default(STARTING)
+  startedAt   DateTime            @default(now())
   endedAt     DateTime?
   avgBitrate  Int?
   peakBitrate Int?
@@ -71,7 +78,7 @@ model OutputSession {
   id             String              @id @default(uuid())
   sessionId      String
   outputId       String
-  status         OutputSessionStatus @default(starting)
+  status         OutputSessionStatus @default(STARTING)
   lastError      String?
   reconnectCount Int                 @default(0)
   startedAt      DateTime            @default(now())

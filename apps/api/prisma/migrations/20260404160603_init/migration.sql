@@ -1,8 +1,11 @@
 -- CreateEnum
-CREATE TYPE "Platform" AS ENUM ('twitch', 'youtube', 'facebook', 'custom');
+CREATE TYPE "Platform" AS ENUM ('TWITCH', 'YOUTUBE', 'FACEBOOK', 'CUSTOM');
 
 -- CreateEnum
-CREATE TYPE "OutputSessionStatus" AS ENUM ('starting', 'live', 'error', 'stopped');
+CREATE TYPE "StreamSessionStatus" AS ENUM ('STARTING', 'LIVE', 'ERROR', 'STOPPED');
+
+-- CreateEnum
+CREATE TYPE "OutputSessionStatus" AS ENUM ('STARTING', 'LIVE', 'ERROR', 'STOPPED');
 
 -- CreateTable
 CREATE TABLE "User" (
@@ -10,8 +13,8 @@ CREATE TABLE "User" (
     "email" TEXT NOT NULL,
     "passwordHash" TEXT NOT NULL,
     "streamKey" TEXT NOT NULL,
-    "tenantId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "deletedAt" TIMESTAMP(3),
 
     CONSTRAINT "User_pkey" PRIMARY KEY ("id")
 );
@@ -27,6 +30,7 @@ CREATE TABLE "Output" (
     "enabled" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
+    "deletedAt" TIMESTAMP(3),
 
     CONSTRAINT "Output_pkey" PRIMARY KEY ("id")
 );
@@ -35,6 +39,7 @@ CREATE TABLE "Output" (
 CREATE TABLE "StreamSession" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
+    "status" "StreamSessionStatus" NOT NULL DEFAULT 'STARTING',
     "startedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "endedAt" TIMESTAMP(3),
     "avgBitrate" INTEGER,
@@ -48,7 +53,7 @@ CREATE TABLE "OutputSession" (
     "id" TEXT NOT NULL,
     "sessionId" TEXT NOT NULL,
     "outputId" TEXT NOT NULL,
-    "status" "OutputSessionStatus" NOT NULL DEFAULT 'starting',
+    "status" "OutputSessionStatus" NOT NULL DEFAULT 'STARTING',
     "lastError" TEXT,
     "reconnectCount" INTEGER NOT NULL DEFAULT 0,
     "startedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -64,10 +69,7 @@ CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 CREATE UNIQUE INDEX "User_streamKey_key" ON "User"("streamKey");
 
 -- CreateIndex
-CREATE INDEX "User_streamKey_idx" ON "User"("streamKey");
-
--- CreateIndex
-CREATE INDEX "Output_userId_idx" ON "Output"("userId");
+CREATE UNIQUE INDEX "Output_userId_streamKey_key" ON "Output"("userId", "streamKey");
 
 -- CreateIndex
 CREATE INDEX "StreamSession_userId_idx" ON "StreamSession"("userId");

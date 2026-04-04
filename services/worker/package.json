@@ -1,0 +1,24 @@
+{
+  "name": "@omega-stream/worker",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@omega-stream/shared": "workspace:*",
+    "@aws-sdk/client-sqs": "^3.600.0",
+    "@aws-sdk/client-cloudwatch": "^3.600.0",
+    "ioredis": "^5.4.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "tsx": "^4.15.6",
+    "vitest": "^1.6.0",
+    "@types/node": "^20.14.2"
+  }
+}

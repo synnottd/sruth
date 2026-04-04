@@ -1,0 +1,21 @@
+{
+  "name": "@omega-stream/infra",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "synth": "cdk synth",
+    "deploy": "cdk deploy",
+    "diff": "cdk diff"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.147.3",
+    "constructs": "^10.3.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "aws-cdk": "^2.147.3",
+    "@types/node": "^20.14.2"
+  }
+}

@@ -6,10 +6,9 @@
   "scripts": {
     "dev": "docker-compose up -d && pnpm --parallel --filter './apps/*' --filter './services/*' dev",
     "build": "pnpm --recursive build",
-    "test": "pnpm --recursive test",
-    "lint": "pnpm --recursive lint"
+    "test": "pnpm --recursive test"
   },
   "devDependencies": {
-    "typescript": "^5.4.5"
+    "typescript": "^6.0.2"
   }
 }

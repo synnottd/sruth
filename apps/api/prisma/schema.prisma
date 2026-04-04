@@ -1,0 +1,93 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Platform {
+  TWITCH
+  YOUTUBE
+  FACEBOOK
+  CUSTOM
+}
+
+enum StreamSessionStatus {
+  STARTING
+  LIVE
+  ERROR
+  STOPPED
+}
+
+enum OutputSessionStatus {
+  STARTING
+  LIVE
+  ERROR
+  STOPPED
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  streamKey    String    @unique @default(uuid())
+  createdAt    DateTime  @default(now())
+  // TODO: add Prisma client extension to auto-filter deletedAt IS NOT NULL across all queries
+  deletedAt    DateTime?
+
+  outputs        Output[]
+  streamSessions StreamSession[]
+}
+
+model Output {
+  id        String    @id @default(uuid())
+  userId    String
+  name      String
+  platform  Platform
+  rtmpUrl   String
+  streamKey String
+  enabled   Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  outputSessions OutputSession[]
+
+  @@unique([userId, streamKey])
+}
+
+model StreamSession {
+  id          String              @id @default(uuid())
+  userId      String
+  status      StreamSessionStatus @default(STARTING)
+  startedAt   DateTime            @default(now())
+  endedAt     DateTime?
+  avgBitrate  Int?
+  peakBitrate Int?
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  outputSessions OutputSession[]
+
+  @@index([userId])
+  @@index([startedAt])
+}
+
+model OutputSession {
+  id             String              @id @default(uuid())
+  sessionId      String
+  outputId       String
+  status         OutputSessionStatus @default(STARTING)
+  lastError      String?
+  reconnectCount Int                 @default(0)
+  startedAt      DateTime            @default(now())
+  endedAt        DateTime?
+
+  session StreamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  output  Output        @relation(fields: [outputId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([outputId])
+}

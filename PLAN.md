@@ -85,7 +85,7 @@ OBS / streaming client
 User
   id, email, passwordHash, createdAt
   streamKey (unique, rotatable)
-  tenantId (for future org-level billing)
+  tenantId (deferred — will be added with a proper Tenant model when org-level billing is designed)
 
 Output
   id, userId, name, platform (enum: twitch|youtube|facebook|custom), rtmpUrl, streamKey

@@ -12,15 +12,17 @@ interface BaseCommand {
   sessionId: string;
 }
 
+export interface OutputTarget {
+  outputSessionId: string;
+  rtmpUrl: string;
+  streamKey: string;
+}
+
 export interface StartCommand extends BaseCommand {
   type: 'start';
   ingestIp: string;
   streamKey: string;
-  outputs: Array<{
-    outputSessionId: string;
-    rtmpUrl: string;
-    streamKey: string;
-  }>;
+  outputs: OutputTarget[];
 }
 
 export interface StopCommand extends BaseCommand {
@@ -30,11 +32,7 @@ export interface StopCommand extends BaseCommand {
 
 export interface UpdateCommand extends BaseCommand {
   type: 'update';
-  outputs: Array<{
-    outputSessionId: string;
-    rtmpUrl: string;
-    streamKey: string;
-  }>;
+  outputs: OutputTarget[];
 }
 
 export interface IngestRelocatedCommand extends BaseCommand {

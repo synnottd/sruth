@@ -27,15 +27,15 @@ services:
       timeout: 5s
       retries: 5
 
-  ingest:
-    build:
-      context: ./services/ingest
-    ports:
-      - '1935:1935'   # RTMP
-      - '8080:8080'   # nginx stat/control
-    depends_on:
-      - postgres
-      - redis
+  # ingest:
+  #   build:
+  #     context: ./services/ingest
+  #   ports:
+  #     - '1935:1935'   # RTMP
+  #     - '8080:8080'   # nginx stat/control
+  #   depends_on:
+  #     - postgres
+  #     - redis
 
 volumes:
   postgres_data:

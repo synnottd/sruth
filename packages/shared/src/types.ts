@@ -47,7 +47,7 @@ export interface StreamHealth {
   outputId: string;
   bitrate: number;
   droppedFrames: number;
-  reconnects: number;
+  reconnectCount: number;
   status: OutputSessionStatus;
   updatedAt: Date;
 }

@@ -34,6 +34,7 @@ model User {
   passwordHash String
   streamKey    String    @unique @default(uuid())
   createdAt    DateTime  @default(now())
+  // TODO: add Prisma client extension to auto-filter deletedAt IS NOT NULL across all queries
   deletedAt    DateTime?
 
   outputs        Output[]

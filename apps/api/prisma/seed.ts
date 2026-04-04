@@ -4,7 +4,9 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
-  const passwordHash = await bcrypt.hash('password123', 10);
+  // Skip hashing if the user already exists — upsert would hit update: {} anyway.
+  const existing = await prisma.user.findUnique({ where: { email: 'dev@omega-stream.local' } });
+  const passwordHash = existing?.passwordHash ?? await bcrypt.hash('password123', 10);
 
   // Idempotent on email — outputs are only created on first run.
   // To reset, delete the user record and re-run.

@@ -1,0 +1,14 @@
+{
+  "name": "omega-stream",
+  "private": true,
+  "version": "0.0.1",
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "dev": "docker-compose up -d && pnpm --parallel --filter './apps/*' --filter './services/*' dev",
+    "build": "pnpm --recursive build",
+    "test": "pnpm --recursive test"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2"
+  }
+}

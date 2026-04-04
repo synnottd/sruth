@@ -9,7 +9,11 @@
     "start": "node dist/index.js",
     "test": "vitest run",
     "db:migrate": "prisma migrate dev",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "db:seed": "prisma db seed"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@omega-stream/shared": "workspace:*",

@@ -27,6 +27,7 @@ http {
     server {
         listen 8080;
 
+        # Access controlled by security group (VPC-internal only, not exposed via NLB)
         location /stat {
             rtmp_stat all;
             rtmp_stat_stylesheet stat.xsl;

@@ -1,4 +1,4 @@
-FROM tiangolo/nginx-rtmp
+FROM tiangolo/nginx-rtmp@sha256:fc40626dfd1291dca7526fb87ddb52b94e59ca9bdcc9901d37593ce2e4312596
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl gettext-base \

@@ -57,9 +57,14 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'POST' && url.pathname === '/test/configure') {
-    Object.assign(config, JSON.parse(body || '{}'))
-    res.writeHead(200)
-    res.end()
+    try {
+      Object.assign(config, JSON.parse(body || '{}'))
+      res.writeHead(200)
+      res.end()
+    } catch {
+      res.writeHead(400)
+      res.end('invalid JSON')
+    }
     return
   }
 

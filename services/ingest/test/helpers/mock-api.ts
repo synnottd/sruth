@@ -25,3 +25,14 @@ export interface MockApiState {
   calls: MockApiCall[]
   config: { onPublishStatus: number }
 }
+
+export async function waitForCallback(path: string, timeoutMs = 5000): Promise<MockApiCall> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const state = await getMockApiState()
+    const call = state.calls.find((c) => c.path === path)
+    if (call) return call
+    await new Promise((r) => setTimeout(r, 200))
+  }
+  throw new Error(`Callback ${path} not received within ${timeoutMs}ms`)
+}

@@ -283,7 +283,7 @@ services/ingest/
 ├── Dockerfile
 ├── docker-compose.yml       # local dev / test compose stack
 ├── docker-entrypoint.sh     # envsubst + exec nginx
-├── nginx.conf.template      # nginx config with ${API_BASE_URL} placeholder
+├── nginx.conf.template      # nginx config with ${API_HOST} placeholder
 ├── package.json
 ├── tsconfig.json
 ├── vitest.config.ts

@@ -57,6 +57,10 @@ export default async function internalStreamRoutes(fastify: FastifyInstance) {
           newIngestIp: clientIp,
         });
       } catch (err) {
+        // Revert ingest_ip so Redis matches what the worker is actually using
+        if (existingIp) {
+          await fastify.redis.set(`stream:${streamKey}:ingest_ip`, existingIp, 'EX', ACTIVE_TTL);
+        }
         fastify.log.warn({ sessionId: existingSessionId, err }, 'Failed to send ingest_relocated command');
         return reply.code(503).send({
           statusCode: 503,

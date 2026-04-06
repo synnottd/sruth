@@ -8,16 +8,17 @@ describe('GET /health', () => {
     const app = await getApp();
     const res = await app.inject({ method: 'GET', url: '/health' });
     expect(res.statusCode).toBe(200);
-    expect(JSON.parse(res.body)).toEqual({ status: 'ok' });
+    expect(res.json()).toEqual({ status: 'ok' });
   });
 
   it('returns 503 when Prisma is down', async () => {
     const app = await getApp();
-    const spy = vi.spyOn(app.prisma, '$queryRaw' as any).mockRejectedValueOnce(new Error('db down'));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const spy = vi.spyOn(app.prisma as any, '$queryRaw').mockRejectedValueOnce(new Error('db down'));
 
     const res = await app.inject({ method: 'GET', url: '/health' });
     expect(res.statusCode).toBe(503);
-    expect(JSON.parse(res.body)).toEqual({ status: 'unhealthy' });
+    expect(res.json()).toEqual({ status: 'unhealthy' });
 
     spy.mockRestore();
   });
@@ -28,7 +29,7 @@ describe('GET /health', () => {
 
     const res = await app.inject({ method: 'GET', url: '/health' });
     expect(res.statusCode).toBe(503);
-    expect(JSON.parse(res.body)).toEqual({ status: 'unhealthy' });
+    expect(res.json()).toEqual({ status: 'unhealthy' });
 
     spy.mockRestore();
   });

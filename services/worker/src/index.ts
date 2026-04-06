@@ -83,7 +83,7 @@ async function shutdown(signal: string): Promise<void> {
 
     // 2. Stop health reporting (no more Redis/CW flushes)
     health.stop();
-    logs.stop();
+    await logs.stop();
 
     // 3. Kill all FFmpeg processes
     await ffmpeg.shutdownAll();

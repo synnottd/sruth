@@ -120,13 +120,15 @@ export class LogCapture {
     console.log('[LogCapture] Started');
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
       this.flushTimer = null;
     }
-    // Final flush
-    this.flushAllToCloudWatch().catch(() => {});
+    // Final flush — await to avoid clearing buffers before flush completes
+    await this.flushAllToCloudWatch().catch((err) =>
+      console.error('[LogCapture] Final flush error:', err),
+    );
     this.buffers.clear();
     console.log('[LogCapture] Stopped');
   }

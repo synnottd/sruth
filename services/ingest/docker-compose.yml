@@ -1,0 +1,21 @@
+services:
+  ingest:
+    build: .
+    ports:
+      - '1935:1935'
+      - '8080:8080'
+    environment:
+      API_HOST: mock-api:3001
+    depends_on:
+      mock-api:
+        condition: service_healthy
+
+  mock-api:
+    build: ./test/mock-api
+    ports:
+      - '3001:3001'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O-', 'http://localhost:3001/health']
+      interval: 2s
+      timeout: 3s
+      retries: 15

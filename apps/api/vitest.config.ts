@@ -11,6 +11,7 @@ export default defineConfig({
       JWT_ACCESS_EXPIRY: '15m',
       JWT_REFRESH_EXPIRY: '7d',
       AUTH_RATE_LIMIT_MAX: '1000',
+      LOG_LEVEL: 'silent',
     },
     setupFiles: ['./test/setup.ts'],
     sequence: { concurrent: false },

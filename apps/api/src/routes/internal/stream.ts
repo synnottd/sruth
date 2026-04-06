@@ -59,7 +59,11 @@ export default async function internalStreamRoutes(fastify: FastifyInstance) {
       } catch (err) {
         // Revert ingest_ip so Redis matches what the worker is actually using
         if (existingIp) {
-          await fastify.redis.set(`stream:${streamKey}:ingest_ip`, existingIp, 'EX', ACTIVE_TTL);
+          try {
+            await fastify.redis.set(`stream:${streamKey}:ingest_ip`, existingIp, 'EX', ACTIVE_TTL);
+          } catch (revertErr) {
+            fastify.log.error({ streamKey, revertErr }, 'Failed to revert ingest_ip');
+          }
         }
         fastify.log.warn({ sessionId: existingSessionId, err }, 'Failed to send ingest_relocated command');
         return reply.code(503).send({

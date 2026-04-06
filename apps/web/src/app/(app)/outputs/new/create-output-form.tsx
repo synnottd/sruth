@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiClient, ApiError } from "@/lib/api/client";
 import { useCreateOutput } from "@/lib/api/hooks";
+import { useToast } from "@/components/toast";
 
 const PLATFORM_PRESETS: Record<string, string> = {
   TWITCH: "rtmp://live.twitch.tv/app",
@@ -15,6 +16,7 @@ const PLATFORM_PRESETS: Record<string, string> = {
 export function CreateOutputForm() {
   const router = useRouter();
   const createOutput = useCreateOutput();
+  const { toast } = useToast();
   const [error, setError] = useState<string | null>(null);
   const [platform, setPlatform] = useState("TWITCH");
   const [rtmpUrl, setRtmpUrl] = useState(PLATFORM_PRESETS.TWITCH);
@@ -35,6 +37,7 @@ export function CreateOutputForm() {
 
     try {
       await apiClient.post("/outputs", { name, platform, rtmpUrl, streamKey });
+      toast("Output created");
       router.push("/outputs");
     } catch (err) {
       if (err instanceof ApiError) {

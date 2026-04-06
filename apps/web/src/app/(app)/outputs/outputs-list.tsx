@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useOutputs, useDeleteOutput } from "@/lib/api/hooks";
+import { useToast } from "@/components/toast";
 import type { Output } from "@/lib/api/types";
 
 function OutputCard({
@@ -83,6 +84,7 @@ function ConfirmDialog({
 export function OutputsList() {
   const { data: outputs, isLoading } = useOutputs();
   const deleteOutput = useDeleteOutput();
+  const { toast } = useToast();
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   if (isLoading) {
@@ -131,7 +133,10 @@ export function OutputsList() {
       {deletingId && (
         <ConfirmDialog
           onConfirm={() => {
-            deleteOutput.mutate(deletingId);
+            deleteOutput.mutate(deletingId, {
+              onSuccess: () => toast("Output deleted"),
+              onError: () => toast("Failed to delete output", "error"),
+            });
             setDeletingId(null);
           }}
           onCancel={() => setDeletingId(null)}

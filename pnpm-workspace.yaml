@@ -3,3 +3,7 @@ packages:
   - 'services/*'
   - 'packages/*'
   - 'infra'
+allowBuilds:
+  '@prisma/engines': true
+  esbuild: true
+  prisma: true

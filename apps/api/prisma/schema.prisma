@@ -7,14 +7,15 @@ datasource db {
 }
 
 model User {
-  id           String          @id @default(uuid())
-  email        String          @unique
+  id           String    @id @default(uuid())
+  email        String    @unique
   passwordHash String
-  streamKey    String          @unique @default(uuid())
-  createdAt    DateTime        @default(now())
+  streamKey    String    @unique @default(uuid())
+  createdAt    DateTime  @default(now())
   deletedAt    DateTime?
-  outputs      Output[]
-  sessions     StreamSession[]
+
+  outputs        Output[]
+  streamSessions StreamSession[]
 }
 
 enum Platform {
@@ -24,40 +25,49 @@ enum Platform {
   CUSTOM
 }
 
-model Output {
-  id             String          @id @default(uuid())
-  userId         String
-  name           String
-  platform       Platform
-  rtmpUrl        String
-  streamKey      String
-  enabled        Boolean         @default(true)
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  deletedAt      DateTime?
-  user           User            @relation(fields: [userId], references: [id])
-  outputSessions OutputSession[]
-
-  @@unique([userId, streamKey])
-  @@index([userId])
-}
-
-enum SessionStatus {
+enum StreamSessionStatus {
   STARTING
   LIVE
   ERROR
   STOPPED
 }
 
+enum OutputSessionStatus {
+  STARTING
+  LIVE
+  ERROR
+  STOPPED
+}
+
+model Output {
+  id        String    @id @default(uuid())
+  userId    String
+  name      String
+  platform  Platform
+  rtmpUrl   String
+  streamKey String
+  enabled   Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  outputSessions OutputSession[]
+
+  @@unique([userId, streamKey])
+  @@index([userId])
+}
+
 model StreamSession {
-  id             String          @id @default(uuid())
-  userId         String
-  status         SessionStatus   @default(STARTING)
-  startedAt      DateTime        @default(now())
-  endedAt        DateTime?
-  avgBitrate     Float?
-  peakBitrate    Float?
-  user           User            @relation(fields: [userId], references: [id])
+  id          String              @id @default(uuid())
+  userId      String
+  status      StreamSessionStatus @default(STARTING)
+  startedAt   DateTime            @default(now())
+  endedAt     DateTime?
+  avgBitrate  Float?
+  peakBitrate Float?
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   outputSessions OutputSession[]
 
   @@index([userId])
@@ -65,16 +75,17 @@ model StreamSession {
 }
 
 model OutputSession {
-  id             String        @id @default(uuid())
+  id             String              @id @default(uuid())
   sessionId      String
   outputId       String
-  status         SessionStatus @default(STARTING)
+  status         OutputSessionStatus @default(STARTING)
   lastError      String?
-  reconnectCount Int           @default(0)
-  startedAt      DateTime      @default(now())
+  reconnectCount Int                 @default(0)
+  startedAt      DateTime            @default(now())
   endedAt        DateTime?
-  session        StreamSession @relation(fields: [sessionId], references: [id])
-  output         Output        @relation(fields: [outputId], references: [id])
+
+  session StreamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  output  Output        @relation(fields: [outputId], references: [id], onDelete: Cascade)
 
   @@index([sessionId])
   @@index([outputId])

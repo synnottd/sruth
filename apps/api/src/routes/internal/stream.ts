@@ -5,16 +5,6 @@ const ACTIVE_TTL = 6 * 60 * 60; // 6 hours
 const COOLDOWN_TTL = 3; // 3 seconds
 
 export default async function internalStreamRoutes(fastify: FastifyInstance) {
-  // Parse form-encoded body from nginx-rtmp
-  fastify.addContentTypeParser(
-    'application/x-www-form-urlencoded',
-    { parseAs: 'string' },
-    (_request, body, done) => {
-      const params = Object.fromEntries(new URLSearchParams(body as string));
-      done(null, params);
-    },
-  );
-
   fastify.post<{
     Body: { app: string; name: string; addr?: string };
   }>('/internal/stream/on-publish', async (request, reply) => {
@@ -71,22 +61,24 @@ export default async function internalStreamRoutes(fastify: FastifyInstance) {
     // 4. Set cooldown
     await fastify.redis.set(`stream:${streamKey}:cooldown`, '1', 'EX', COOLDOWN_TTL);
 
-    // 5. Create StreamSession
-    const session = await fastify.prisma.streamSession.create({
-      data: { userId: user.id },
-    });
-
-    // 6. Create OutputSessions for each enabled output
+    // 5-6. Create StreamSession + OutputSessions in a transaction
     const outputs = await fastify.prisma.output.findMany({
       where: { userId: user.id, enabled: true },
     });
-    const outputSessions = await Promise.all(
-      outputs.map((output) =>
-        fastify.prisma.outputSession.create({
-          data: { sessionId: session.id, outputId: output.id },
-        }),
-      ),
-    );
+
+    const { session, outputSessions } = await fastify.prisma.$transaction(async (tx) => {
+      const session = await tx.streamSession.create({
+        data: { userId: user.id },
+      });
+      const outputSessions = await Promise.all(
+        outputs.map((output) =>
+          tx.outputSession.create({
+            data: { sessionId: session.id, outputId: output.id },
+          }),
+        ),
+      );
+      return { session, outputSessions };
+    });
 
     // 7-8. Set Redis keys
     await fastify.redis.set(`stream:${streamKey}:active`, session.id, 'EX', ACTIVE_TTL);
@@ -122,35 +114,23 @@ export default async function internalStreamRoutes(fastify: FastifyInstance) {
     }
 
     // 1. Mark StreamSession as STOPPED
-    await fastify.prisma.streamSession.update({
+    const session = await fastify.prisma.streamSession.update({
       where: { id: sessionId },
       data: { status: 'STOPPED', endedAt: new Date() },
     });
 
     // 2. Mark all OutputSessions as STOPPED
-    const outputSessions = await fastify.prisma.outputSession.findMany({
+    await fastify.prisma.outputSession.updateMany({
       where: { sessionId },
+      data: { status: 'STOPPED', endedAt: new Date() },
     });
-    await Promise.all(
-      outputSessions.map((os) =>
-        fastify.prisma.outputSession.update({
-          where: { id: os.id },
-          data: { status: 'STOPPED', endedAt: new Date() },
-        }),
-      ),
-    );
 
     // 3. Send SQS stop command
-    const session = await fastify.prisma.streamSession.findUnique({
-      where: { id: sessionId },
+    await sendCommand({
+      type: 'stop',
+      userId: session.userId,
+      sessionId,
     });
-    if (session) {
-      await sendCommand({
-        type: 'stop',
-        userId: session.userId,
-        sessionId,
-      });
-    }
 
     // 4. Delete Redis keys
     await fastify.redis.del(`stream:${streamKey}:active`);

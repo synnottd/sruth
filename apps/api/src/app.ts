@@ -7,9 +7,20 @@ import outputRoutes from './routes/outputs.js';
 import streamRoutes from './routes/stream.js';
 import internalStreamRoutes from './routes/internal/stream.js';
 import streamsRoutes from './routes/streams.js';
+import healthRoutes from './routes/health.js';
 
 export async function buildApp() {
   const app = Fastify({ logger: false });
+
+  // Parse form-encoded bodies (used by nginx-rtmp callbacks)
+  app.addContentTypeParser(
+    'application/x-www-form-urlencoded',
+    { parseAs: 'string' },
+    (_request, body, done) => {
+      const params = Object.fromEntries(new URLSearchParams(body as string));
+      done(null, params);
+    },
+  );
 
   // Plugins
   await app.register(prismaPlugin);
@@ -17,6 +28,7 @@ export async function buildApp() {
   await app.register(authPlugin);
 
   // Routes
+  await app.register(healthRoutes);
   await app.register(authRoutes);
   await app.register(outputRoutes);
   await app.register(streamRoutes);

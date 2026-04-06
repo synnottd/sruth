@@ -11,11 +11,12 @@ export default async function authRoutes(fastify: FastifyInstance) {
   }>('/auth/register', async (request, reply) => {
     const { email, password } = request.body;
 
-    if (!email || !password || password.length < 8) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email) || !password || password.length < 8) {
       return reply.code(400).send({
         statusCode: 400,
         error: 'VALIDATION_ERROR',
-        message: 'Email and password (min 8 chars) are required',
+        message: 'Valid email and password (min 8 chars) are required',
       });
     }
 
@@ -194,5 +195,22 @@ export default async function authRoutes(fastify: FastifyInstance) {
       })
       .code(200)
       .send({ accessToken });
+  });
+
+  fastify.post('/auth/logout', { onRequest: [fastify.authenticate] }, async (request, reply) => {
+    const token = request.cookies.refreshToken;
+    if (token) {
+      try {
+        const payload = fastify.jwt.verify<{ sub: string; tokenId: string }>(token);
+        await fastify.redis.del(`refresh:${payload.sub}:${payload.tokenId}`);
+      } catch {
+        // Token already invalid — clear cookie anyway
+      }
+    }
+
+    reply
+      .clearCookie('refreshToken', { path: '/auth' })
+      .code(200)
+      .send({ status: 'logged_out' });
   });
 }

@@ -39,6 +39,26 @@ function withSoftDelete(prisma: PrismaClient) {
           }
           return query(args);
         },
+        async delete({ model, args, query }) {
+          if (softDeleteModels.includes(model as any)) {
+            const modelName = model[0].toLowerCase() + model.slice(1);
+            return (prisma as any)[modelName].update({
+              ...args,
+              data: { deletedAt: new Date() },
+            });
+          }
+          return query(args);
+        },
+        async deleteMany({ model, args, query }) {
+          if (softDeleteModels.includes(model as any)) {
+            const modelName = model[0].toLowerCase() + model.slice(1);
+            return (prisma as any)[modelName].updateMany({
+              ...args,
+              data: { deletedAt: new Date() },
+            });
+          }
+          return query(args);
+        },
       },
     },
   });

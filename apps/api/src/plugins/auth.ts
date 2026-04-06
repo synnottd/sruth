@@ -6,7 +6,12 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 export default fp(async (fastify: FastifyInstance) => {
   await fastify.register(fastifyCookie);
   await fastify.register(fastifyJwt, {
-    secret: process.env.JWT_SECRET ?? 'dev-secret',
+    secret: process.env.JWT_SECRET || (() => {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('JWT_SECRET must be set in production');
+      }
+      return 'dev-secret';
+    })(),
   });
 
   fastify.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {

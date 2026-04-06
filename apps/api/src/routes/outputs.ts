@@ -84,11 +84,7 @@ export default async function outputRoutes(fastify: FastifyInstance) {
       });
     }
 
-    // Soft delete
-    await (fastify.prisma as any).output.update({
-      where: { id, deletedAt: undefined },
-      data: { deletedAt: new Date() },
-    });
+    await fastify.prisma.output.delete({ where: { id } });
 
     return reply.code(204).send();
   });

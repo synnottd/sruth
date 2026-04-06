@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import cors from '@fastify/cors';
 import prismaPlugin from './plugins/prisma.js';
 import redisPlugin from './plugins/redis.js';
 import authPlugin from './plugins/auth.js';
@@ -34,11 +35,22 @@ function addFormParser(app: ReturnType<typeof Fastify>) {
   );
 }
 
+const loggerConfig = {
+  level: process.env.LOG_LEVEL ?? 'info',
+  redact: ['req.headers.authorization', 'req.headers["x-internal-secret"]'],
+};
+
 /** Public API server — auth, outputs, streams, health */
 export async function buildApp() {
-  const app = Fastify({ logger: false });
+  const app = Fastify({ logger: loggerConfig });
 
   addFormParser(app);
+
+  // CORS
+  await app.register(cors, {
+    origin: process.env.CORS_ORIGIN ?? false,
+    credentials: true,
+  });
 
   // Plugins
   await app.register(prismaPlugin);
@@ -59,7 +71,7 @@ export async function buildApp() {
 
 /** Internal API server — nginx-rtmp callbacks, isolated port */
 export async function buildInternalApp() {
-  const app = Fastify({ logger: false });
+  const app = Fastify({ logger: loggerConfig });
 
   addFormParser(app);
 

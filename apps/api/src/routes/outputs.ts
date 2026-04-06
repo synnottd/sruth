@@ -18,19 +18,12 @@ const updateOutputSchema = z.object({
   enabled: z.boolean().optional(),
 });
 
-function maskStreamKey(output: Record<string, unknown>) {
-  const key = output.streamKey as string;
-  const { streamKey: _, ...rest } = output;
-  return { ...rest, streamKey: key.length > 4 ? key.slice(0, 4) + '****' : '****' };
-}
-
 export default async function outputRoutes(fastify: FastifyInstance) {
   fastify.addHook('onRequest', fastify.authenticate);
 
   fastify.get('/outputs', async (request) => {
     const userId = request.user.sub;
-    const outputs = await fastify.prisma.output.findMany({ where: { userId } });
-    return outputs.map(maskStreamKey);
+    return fastify.prisma.output.findMany({ where: { userId } });
   });
 
   fastify.post('/outputs', async (request, reply) => {
@@ -59,7 +52,7 @@ export default async function outputRoutes(fastify: FastifyInstance) {
       data: { userId, name, platform, rtmpUrl, streamKey },
     });
 
-    return reply.code(201).send(maskStreamKey(output));
+    return reply.code(201).send(output);
   });
 
   fastify.put<{
@@ -99,7 +92,7 @@ export default async function outputRoutes(fastify: FastifyInstance) {
       },
     });
 
-    return maskStreamKey(updated);
+    return updated;
   });
 
   fastify.delete<{ Params: { id: string } }>('/outputs/:id', async (request, reply) => {

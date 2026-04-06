@@ -70,6 +70,7 @@ export default async function internalStreamRoutes(fastify: FastifyInstance) {
     // 4. Create StreamSession + OutputSessions in a transaction
     const outputs = await fastify.prisma.output.findMany({
       where: { userId: user.id, enabled: true },
+      omit: { streamKey: false },
     });
 
     const { session, outputSessions } = await fastify.prisma.$transaction(async (tx) => {

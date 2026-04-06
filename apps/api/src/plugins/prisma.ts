@@ -68,7 +68,12 @@ export type ExtendedPrismaClient = ReturnType<typeof withSoftDelete>;
 
 export default fp(async (fastify: FastifyInstance) => {
   const adapter = new PrismaPg(process.env.DATABASE_URL!);
-  const prisma = withSoftDelete(new PrismaClient({ adapter }));
+  const prisma = withSoftDelete(new PrismaClient({
+    adapter,
+    omit: {
+      output: { streamKey: true },
+    },
+  }));
   fastify.decorate('prisma', prisma);
   fastify.addHook('onClose', async () => {
     await (prisma as any).$disconnect();

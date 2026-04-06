@@ -9,4 +9,5 @@ coverage/
 .DS_Store
 .mcp.json
 .pnpm-store/
-.claude/
+.claude/*
+!.claude/skills/

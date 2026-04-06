@@ -49,12 +49,21 @@ export default async function internalStreamRoutes(fastify: FastifyInstance) {
 
       // Different IP = ingest failover
       await fastify.redis.set(`stream:${streamKey}:ingest_ip`, clientIp, 'EX', ACTIVE_TTL);
-      await sendCommand({
-        type: 'ingest_relocated',
-        userId: user.id,
-        sessionId: existingSessionId,
-        newIngestIp: clientIp,
-      });
+      try {
+        await sendCommand({
+          type: 'ingest_relocated',
+          userId: user.id,
+          sessionId: existingSessionId,
+          newIngestIp: clientIp,
+        });
+      } catch (err) {
+        fastify.log.warn({ sessionId: existingSessionId, err }, 'Failed to send ingest_relocated command');
+        return reply.code(503).send({
+          statusCode: 503,
+          error: 'WORKER_UNAVAILABLE',
+          message: 'Failed to notify worker of ingest relocation',
+        });
+      }
       return reply.code(200).send({ status: 'relocated' });
     }
 
@@ -113,12 +122,20 @@ export default async function internalStreamRoutes(fastify: FastifyInstance) {
           };
         }),
       });
-    } catch {
+    } catch (err) {
       // Roll back Redis + DB so the user isn't stuck with a phantom session
-      await fastify.redis.del(`stream:${streamKey}:active`);
-      await fastify.redis.del(`stream:${streamKey}:ingest_ip`);
-      await fastify.prisma.outputSession.deleteMany({ where: { sessionId: session.id } });
-      await fastify.prisma.streamSession.delete({ where: { id: session.id } });
+      fastify.log.warn({ sessionId: session.id, err }, 'SQS send failed in on_publish, rolling back');
+      const results = await Promise.allSettled([
+        fastify.redis.del(`stream:${streamKey}:active`),
+        fastify.redis.del(`stream:${streamKey}:ingest_ip`),
+        fastify.redis.del(`stream:${streamKey}:cooldown`),
+        fastify.prisma.outputSession.deleteMany({ where: { sessionId: session.id } }),
+        fastify.prisma.streamSession.delete({ where: { id: session.id } }),
+      ]);
+      const failures = results.filter((r) => r.status === 'rejected');
+      if (failures.length > 0) {
+        fastify.log.error({ sessionId: session.id, failures }, 'Partial rollback failure in on_publish');
+      }
       return reply.code(503).send({
         statusCode: 503,
         error: 'WORKER_UNAVAILABLE',
@@ -153,12 +170,16 @@ export default async function internalStreamRoutes(fastify: FastifyInstance) {
       data: { status: 'STOPPED', endedAt: new Date() },
     });
 
-    // 3. Send SQS stop command
-    await sendCommand({
-      type: 'stop',
-      userId: session.userId,
-      sessionId,
-    });
+    // 3. Send SQS stop command — best-effort, don't block cleanup
+    try {
+      await sendCommand({
+        type: 'stop',
+        userId: session.userId,
+        sessionId,
+      });
+    } catch (err) {
+      fastify.log.warn({ sessionId, err }, 'Failed to send SQS stop command');
+    }
 
     // 4. Delete Redis keys
     await fastify.redis.del(`stream:${streamKey}:active`);

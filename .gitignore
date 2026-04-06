@@ -7,4 +7,6 @@ coverage/
 !.env.example
 *.log
 .DS_Store
+.mcp.json
 .pnpm-store/
+.claude/

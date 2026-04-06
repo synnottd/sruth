@@ -133,8 +133,10 @@ export class LogCapture {
 
   /** Called for each FFmpeg stderr line. */
   async captureLine(sessionId: string, outputSessionId: string, line: string): Promise<void> {
-    // Write to Redis immediately
-    await this.writeToRedis(sessionId, outputSessionId, line);
+    // Write to Redis immediately (don't let failure prevent CloudWatch buffering)
+    await this.writeToRedis(sessionId, outputSessionId, line).catch((err) =>
+      console.error('[LogCapture] Redis write error:', err),
+    );
 
     // Buffer for CloudWatch
     let buf = this.buffers.get(outputSessionId);

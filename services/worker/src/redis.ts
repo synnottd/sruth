@@ -21,13 +21,16 @@ export function getSubscriber(): Redis {
 
 export async function shutdownRedis(): Promise<void> {
   const promises: Promise<void>[] = [];
-  if (subscriber) {
-    promises.push(subscriber.quit().then(() => {}));
-    subscriber = null;
+  const sub = subscriber;
+  const cmd = redis;
+  // Null references first to prevent new connections during shutdown
+  subscriber = null;
+  redis = null;
+  if (sub) {
+    promises.push(sub.quit().then(() => {}));
   }
-  if (redis) {
-    promises.push(redis.quit().then(() => {}));
-    redis = null;
+  if (cmd) {
+    promises.push(cmd.quit().then(() => {}));
   }
   await Promise.all(promises);
 }

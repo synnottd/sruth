@@ -9,6 +9,12 @@ const BACKOFF_BASE_MS = 1000; // 1s, 2s, 4s, 8s, 16s
 const INGEST_PORT = 1935;
 const INGEST_APP = 'live';
 
+/** Redact stream keys from RTMP URLs for safe logging. */
+function redactStreamKey(url: string): string {
+  // Match rtmp://host/app/STREAM_KEY — redact the key portion
+  return url.replace(/(rtmp:\/\/[^/]+\/[^/]+\/)(.+)/, '$1***');
+}
+
 export type OutputStatus = 'starting' | 'live' | 'retrying' | 'error' | 'stopped';
 
 export interface OutputProcess {
@@ -104,14 +110,20 @@ export class FfmpegManager {
   }
 
   /** Add outputs to an existing session. */
-  addOutputs(sessionId: string, outputs: OutputTarget[]): void {
+  async addOutputs(sessionId: string, outputs: OutputTarget[]): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session) {
       console.warn('[FFmpeg] Cannot add outputs — session not found:', sessionId);
       return;
     }
-    for (const output of outputs) {
-      this.addOutput(session, output);
+    for (const target of outputs) {
+      // Kill existing output with the same ID to prevent orphaned processes
+      const existing = session.outputs.get(target.outputSessionId);
+      if (existing) {
+        console.warn('[FFmpeg] Replacing existing output:', target.outputSessionId);
+        await this.killOutput(existing);
+      }
+      this.addOutput(session, target);
     }
   }
 
@@ -218,8 +230,16 @@ export class FfmpegManager {
       return;
     }
 
+    // Clean exit (code 0) means the source stream ended — don't retry
+    if (code === 0) {
+      console.log('[FFmpeg] Output', output.outputSessionId, 'exited cleanly (source stream ended)');
+      output.status = 'stopped';
+      this.events.onStatusChange(session.sessionId, output.outputSessionId, 'stopped', null);
+      return;
+    }
+
     const stderrText = output.stderrBuffer.join('\n');
-    const errorClass = code === 0 ? 'transient' : classifyError(stderrText);
+    const errorClass = classifyError(stderrText);
 
     console.log(
       '[FFmpeg] Output', output.outputSessionId, 'exited code', code,
@@ -259,7 +279,7 @@ export class FfmpegManager {
       outputUrl,
     ];
 
-    console.log('[FFmpeg] Spawning for', output.outputSessionId, '→', output.rtmpUrl);
+    console.log('[FFmpeg] Spawning for', output.outputSessionId, '→', redactStreamKey(output.rtmpUrl));
 
     const proc = spawn('ffmpeg', args, {
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -267,6 +287,12 @@ export class FfmpegManager {
 
     output.process = proc;
     output.stderrBuffer = [];
+
+    // Handle spawn errors (e.g. ENOENT if ffmpeg binary is missing)
+    proc.on('error', (err) => {
+      console.error('[FFmpeg] Process error for', output.outputSessionId, err.message);
+      output.stderrBuffer.push(err.message);
+    });
 
     // Parse stdout for -progress metrics
     const progressParser = new ProgressParser((metrics) => {
@@ -315,8 +341,11 @@ export class FfmpegManager {
       return;
     }
 
-    // Double-check we weren't stopped during sleep
+    // Double-check we weren't stopped during sleep and session still exists
     if (output.status === 'stopped' || output.abortController.signal.aborted) {
+      return;
+    }
+    if (!this.sessions.has(session.sessionId)) {
       return;
     }
 

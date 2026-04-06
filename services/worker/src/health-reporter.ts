@@ -106,7 +106,9 @@ export class HealthReporter {
       const { sessionId } = session;
 
       // Refresh session ownership TTL
-      await this.router.refreshSessionOwnership(sessionId).catch(() => {});
+      await this.router.refreshSessionOwnership(sessionId).catch((err) =>
+        console.warn('[Health] Failed to refresh session ownership for', sessionId, err),
+      );
 
       // Collect per-output data
       const statusEntries: string[] = [];
@@ -142,16 +144,14 @@ export class HealthReporter {
         pipeline.set(`stream:${sessionId}:bitrate`, String(latestBitrate), 'EX', BITRATE_TTL);
       }
 
-      // Per-output status hash
+      // Per-output status hash (hset overwrites fields atomically, no del needed)
       if (statusEntries.length > 0) {
-        pipeline.del(`stream:${sessionId}:status`);
         pipeline.hset(`stream:${sessionId}:status`, ...statusEntries);
         pipeline.expire(`stream:${sessionId}:status`, STATUS_TTL);
       }
 
       // Per-output health hash
       if (healthEntries.length > 0) {
-        pipeline.del(`stream:${sessionId}:health`);
         pipeline.hset(`stream:${sessionId}:health`, ...healthEntries);
         pipeline.expire(`stream:${sessionId}:health`, HEALTH_TTL);
       }

@@ -118,6 +118,17 @@ describe('MessageRouter', () => {
     });
   });
 
+  describe('duplicate start guard', () => {
+    it('throws if start() is called twice', async () => {
+      await expect(router.start(handler)).rejects.toThrow('MessageRouter already started');
+    });
+
+    it('allows restart after stop()', async () => {
+      await router.stop();
+      await expect(router.start(handler)).resolves.toBeUndefined();
+    });
+  });
+
   describe('session registration', () => {
     it('registers session ownership', async () => {
       await router.registerSession('session-1');
@@ -170,6 +181,16 @@ describe('MessageRouter', () => {
         `worker:${OTHER_WORKER_ID}:commands`,
         JSON.stringify(stopCommand),
       );
+    });
+
+    it('falls back to local handling when publish fails', async () => {
+      mockRedisInstance.get.mockResolvedValueOnce(OTHER_WORKER_ID);
+      mockRedisInstance.get.mockResolvedValueOnce('1'); // heartbeat alive
+      mockRedisInstance.publish.mockRejectedValueOnce(new Error('Redis down'));
+
+      const result = await router.routeCommand(stopCommand);
+
+      expect(result).toBe(true); // Handle locally as fallback
     });
 
     it('drops stop for orphaned session (no owner)', async () => {

@@ -52,6 +52,19 @@ describe('LogCapture', () => {
       expect(pipelineExec).toHaveBeenCalled();
     });
 
+    it('still buffers for CloudWatch when Redis write fails', async () => {
+      pipelineExec.mockRejectedValueOnce(new Error('Redis down'));
+
+      await capture.captureLine('s1', 'out-1', 'important line');
+
+      // Should not throw, and CloudWatch buffer should still have the line
+      capture.start();
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(cwCalls).toHaveLength(1);
+      expect(cwCalls[0].events[0].message).toBe('important line');
+    });
+
     it('writes to correct key for different outputs', async () => {
       await capture.captureLine('s1', 'out-1', 'line 1');
       await capture.captureLine('s1', 'out-2', 'line 2');

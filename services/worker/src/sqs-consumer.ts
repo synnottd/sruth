@@ -17,6 +17,23 @@ function parseMessage(body: string): WorkerCommand | null {
     if (!VALID_TYPES.has(parsed.type)) return null;
     if (typeof parsed.sessionId !== 'string') return null;
     if (typeof parsed.userId !== 'string') return null;
+
+    // Validate command-specific required fields
+    switch (parsed.type) {
+      case 'start':
+        if (typeof parsed.ingestIp !== 'string') return null;
+        if (typeof parsed.streamKey !== 'string') return null;
+        if (!Array.isArray(parsed.outputs) || parsed.outputs.length === 0) return null;
+        break;
+      case 'update':
+        if (!Array.isArray(parsed.outputs) || parsed.outputs.length === 0) return null;
+        break;
+      case 'ingest_relocated':
+        if (typeof parsed.newIngestIp !== 'string') return null;
+        break;
+      // 'stop' has no additional required fields
+    }
+
     return parsed as WorkerCommand;
   } catch {
     return null;

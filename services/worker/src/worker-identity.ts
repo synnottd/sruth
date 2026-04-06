@@ -8,7 +8,10 @@ export async function resolveWorkerId(): Promise<string> {
   const metadataUri = process.env.ECS_CONTAINER_METADATA_URI_V4;
   if (metadataUri) {
     try {
-      const resp = await fetch(`${metadataUri}/task`);
+      const resp = await fetch(`${metadataUri}/task`, { signal: AbortSignal.timeout(5000) });
+      if (!resp.ok) {
+        throw new Error(`ECS metadata returned ${resp.status}`);
+      }
       const data = await resp.json() as { TaskARN?: string };
       if (data.TaskARN) {
         // Use last segment of ARN as a stable, short ID

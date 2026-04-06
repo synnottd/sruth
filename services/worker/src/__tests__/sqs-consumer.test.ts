@@ -154,6 +154,81 @@ describe('SqsConsumer', () => {
     expect(mockSend).toHaveBeenCalledTimes(2);
   });
 
+  it('drops start command missing outputs', async () => {
+    const handler = vi.fn<(cmd: WorkerCommand) => Promise<void>>();
+
+    let pollCount = 0;
+    mockSend.mockImplementation(async (cmd: { _type: string }) => {
+      if (cmd._type === 'receive') {
+        pollCount++;
+        if (pollCount === 1) {
+          return {
+            Messages: [{
+              Body: JSON.stringify({ type: 'start', sessionId: 's', userId: 'u', ingestIp: '1.2.3.4', streamKey: 'k' }),
+              ReceiptHandle: 'r-bad',
+            }],
+          };
+        }
+        await consumer.stop();
+        return { Messages: [] };
+      }
+      return {};
+    });
+
+    await consumer.start(handler);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('drops ingest_relocated command missing newIngestIp', async () => {
+    const handler = vi.fn<(cmd: WorkerCommand) => Promise<void>>();
+
+    let pollCount = 0;
+    mockSend.mockImplementation(async (cmd: { _type: string }) => {
+      if (cmd._type === 'receive') {
+        pollCount++;
+        if (pollCount === 1) {
+          return {
+            Messages: [{
+              Body: JSON.stringify({ type: 'ingest_relocated', sessionId: 's', userId: 'u' }),
+              ReceiptHandle: 'r-bad',
+            }],
+          };
+        }
+        await consumer.stop();
+        return { Messages: [] };
+      }
+      return {};
+    });
+
+    await consumer.start(handler);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('drops update command with empty outputs', async () => {
+    const handler = vi.fn<(cmd: WorkerCommand) => Promise<void>>();
+
+    let pollCount = 0;
+    mockSend.mockImplementation(async (cmd: { _type: string }) => {
+      if (cmd._type === 'receive') {
+        pollCount++;
+        if (pollCount === 1) {
+          return {
+            Messages: [{
+              Body: JSON.stringify({ type: 'update', sessionId: 's', userId: 'u', outputs: [] }),
+              ReceiptHandle: 'r-bad',
+            }],
+          };
+        }
+        await consumer.stop();
+        return { Messages: [] };
+      }
+      return {};
+    });
+
+    await consumer.start(handler);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
   it('processes multiple messages in a batch sequentially', async () => {
     const order: string[] = [];
     const handler = vi.fn<(cmd: WorkerCommand) => Promise<void>>()

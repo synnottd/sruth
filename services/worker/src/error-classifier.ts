@@ -3,6 +3,7 @@ export type ErrorClass = 'user' | 'transient' | 'fatal';
 const USER_ERROR_PATTERNS = [
   /Authorization failed/i,
   /Authentication/i,
+  /\b401\b/,
   /\b403\b/,
   /Stream not found/i,
   /Invalid stream key/i,

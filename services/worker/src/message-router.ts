@@ -15,6 +15,7 @@ export class MessageRouter {
   private workerId: string;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private handler: CommandHandler | null = null;
+  private started = false;
 
   constructor(workerId: string) {
     this.workerId = workerId;
@@ -22,6 +23,10 @@ export class MessageRouter {
 
   /** Start heartbeat and subscribe to this worker's pub/sub channel. */
   async start(handler: CommandHandler): Promise<void> {
+    if (this.started) {
+      throw new Error('MessageRouter already started');
+    }
+    this.started = true;
     this.handler = handler;
 
     // Initial heartbeat
@@ -69,6 +74,7 @@ export class MessageRouter {
     } catch {
       // Best effort
     }
+    this.started = false;
     console.log('[Router] Stopped');
   }
 
@@ -129,11 +135,17 @@ export class MessageRouter {
     if (heartbeat) {
       // Owner is alive — re-route via pub/sub
       console.log('[Router] Re-routing', command.type, 'for session', command.sessionId, 'to worker', ownerId);
-      await redis.publish(
-        this.channelKeyFor(ownerId),
-        JSON.stringify(command),
-      );
-      return false;
+      try {
+        await redis.publish(
+          this.channelKeyFor(ownerId),
+          JSON.stringify(command),
+        );
+        return false;
+      } catch (err) {
+        // Publish failed — handle locally as fallback to avoid losing the command
+        console.error('[Router] Publish to', ownerId, 'failed, handling locally:', err);
+        return true;
+      }
     }
 
     // Owner's heartbeat expired — it's dead

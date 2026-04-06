@@ -45,7 +45,7 @@ async function handleCommand(command: WorkerCommand): Promise<void> {
       break;
     }
     case 'update': {
-      ffmpeg.addOutputs(command.sessionId, command.outputs);
+      await ffmpeg.addOutputs(command.sessionId, command.outputs);
       break;
     }
     case 'ingest_relocated': {
@@ -62,24 +62,40 @@ async function onSqsMessage(command: WorkerCommand): Promise<void> {
   await handleCommand(command);
 }
 
+let shuttingDown = false;
+
 async function shutdown(signal: string): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+
   console.log(`[Worker] Received ${signal}, shutting down...`);
 
-  // 1. Stop accepting new messages
-  await consumer.stop();
+  // Hard timeout — force exit if graceful shutdown takes too long
+  const hardTimeout = setTimeout(() => {
+    console.error('[Worker] Shutdown timed out after 30s, forcing exit');
+    process.exit(1);
+  }, 30_000);
+  hardTimeout.unref();
 
-  // 2. Stop health reporting (no more Redis/CW flushes)
-  health.stop();
-  logs.stop();
+  try {
+    // 1. Stop accepting new messages
+    await consumer.stop();
 
-  // 3. Kill all FFmpeg processes
-  await ffmpeg.shutdownAll();
+    // 2. Stop health reporting (no more Redis/CW flushes)
+    health.stop();
+    logs.stop();
 
-  // 4. Stop router (heartbeat, pub/sub)
-  await router.stop();
+    // 3. Kill all FFmpeg processes
+    await ffmpeg.shutdownAll();
 
-  // 5. Close Redis connections
-  await shutdownRedis();
+    // 4. Stop router (heartbeat, pub/sub)
+    await router.stop();
+
+    // 5. Close Redis connections
+    await shutdownRedis();
+  } catch (err) {
+    console.error('[Worker] Error during shutdown:', err);
+  }
 
   process.exit(0);
 }
@@ -118,8 +134,8 @@ async function main(): Promise<void> {
   health.start();
   logs.start();
 
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => { shutdown('SIGTERM').catch(() => process.exit(1)); });
+  process.on('SIGINT', () => { shutdown('SIGINT').catch(() => process.exit(1)); });
 
   console.log('[Worker] Ready, starting SQS consumer...');
   await consumer.start(onSqsMessage);

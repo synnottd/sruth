@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import rateLimit from '@fastify/rate-limit';
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 
@@ -6,10 +7,16 @@ const SALT_ROUNDS = 12;
 const REFRESH_EXPIRY_SECONDS = 7 * 24 * 60 * 60; // 7 days
 
 export default async function authRoutes(fastify: FastifyInstance) {
+  await fastify.register(rateLimit, {
+    max: Number(process.env.AUTH_RATE_LIMIT_MAX ?? 10),
+    timeWindow: '1 minute',
+    keyGenerator: (request) => request.ip,
+  });
   fastify.post<{
     Body: { email: string; password: string };
   }>('/auth/register', async (request, reply) => {
-    const { email, password } = request.body;
+    const { email: rawEmail, password } = request.body;
+    const email = rawEmail?.toLowerCase().trim();
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!email || !emailRegex.test(email) || !password || password.length < 8) {
@@ -70,7 +77,16 @@ export default async function authRoutes(fastify: FastifyInstance) {
   fastify.post<{
     Body: { email: string; password: string };
   }>('/auth/login', async (request, reply) => {
-    const { email, password } = request.body;
+    const { email: rawEmail, password } = request.body ?? {};
+    const email = rawEmail?.toLowerCase().trim();
+
+    if (!email || !password) {
+      return reply.code(400).send({
+        statusCode: 400,
+        error: 'VALIDATION_ERROR',
+        message: 'Email and password are required',
+      });
+    }
 
     const user = await fastify.prisma.user.findFirst({ where: { email } });
     if (!user) {

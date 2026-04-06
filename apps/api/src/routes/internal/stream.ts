@@ -58,10 +58,7 @@ export default async function internalStreamRoutes(fastify: FastifyInstance) {
       return reply.code(200).send({ status: 'relocated' });
     }
 
-    // 4. Set cooldown
-    await fastify.redis.set(`stream:${streamKey}:cooldown`, '1', 'EX', COOLDOWN_TTL);
-
-    // 5-6. Create StreamSession + OutputSessions in a transaction
+    // 4. Create StreamSession + OutputSessions in a transaction
     const outputs = await fastify.prisma.output.findMany({
       where: { userId: user.id, enabled: true },
     });
@@ -80,22 +77,40 @@ export default async function internalStreamRoutes(fastify: FastifyInstance) {
       return { session, outputSessions };
     });
 
-    // 7-8. Set Redis keys
-    await fastify.redis.set(`stream:${streamKey}:active`, session.id, 'EX', ACTIVE_TTL);
+    // 5. Atomically claim the active slot — if another request won, roll back
+    const claimed = await fastify.redis.set(
+      `stream:${streamKey}:active`, session.id, 'EX', ACTIVE_TTL, 'NX',
+    );
+    if (!claimed) {
+      await fastify.prisma.outputSession.deleteMany({ where: { sessionId: session.id } });
+      await fastify.prisma.streamSession.delete({ where: { id: session.id } });
+      return reply.code(409).send({
+        statusCode: 409,
+        error: 'DUPLICATE_STREAM',
+        message: 'Stream became active during processing',
+      });
+    }
+
+    // 6. Set remaining Redis keys + cooldown (after successful claim)
     await fastify.redis.set(`stream:${streamKey}:ingest_ip`, clientIp, 'EX', ACTIVE_TTL);
+    await fastify.redis.set(`stream:${streamKey}:cooldown`, '1', 'EX', COOLDOWN_TTL);
 
     // 9. Send SQS start command
+    const outputMap = new Map(outputs.map((o) => [o.id, o]));
     await sendCommand({
       type: 'start',
       userId: user.id,
       sessionId: session.id,
       ingestIp: clientIp,
       streamKey,
-      outputs: outputSessions.map((os, i) => ({
-        outputSessionId: os.id,
-        rtmpUrl: outputs[i].rtmpUrl,
-        streamKey: outputs[i].streamKey,
-      })),
+      outputs: outputSessions.map((os) => {
+        const output = outputMap.get(os.outputId)!;
+        return {
+          outputSessionId: os.id,
+          rtmpUrl: output.rtmpUrl,
+          streamKey: output.streamKey,
+        };
+      }),
     });
 
     // 10. Return 200

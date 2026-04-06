@@ -10,6 +10,7 @@ export default defineConfig({
       JWT_SECRET: 'test-secret',
       JWT_ACCESS_EXPIRY: '15m',
       JWT_REFRESH_EXPIRY: '7d',
+      AUTH_RATE_LIMIT_MAX: '1000',
     },
     setupFiles: ['./test/setup.ts'],
     sequence: { concurrent: false },

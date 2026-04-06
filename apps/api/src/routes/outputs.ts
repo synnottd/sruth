@@ -1,25 +1,50 @@
 import type { FastifyInstance } from 'fastify';
+import { Platform } from '@prisma/client';
+import { z } from 'zod';
 
 const MAX_OUTPUTS = 5;
+
+const createOutputSchema = z.object({
+  name: z.string().min(1).max(100),
+  platform: z.nativeEnum(Platform),
+  rtmpUrl: z.string().url().max(2048),
+  streamKey: z.string().min(1).max(512),
+});
+
+const updateOutputSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  rtmpUrl: z.string().url().max(2048).optional(),
+  streamKey: z.string().min(1).max(512).optional(),
+  enabled: z.boolean().optional(),
+});
+
+function maskStreamKey(output: Record<string, unknown>) {
+  const key = output.streamKey as string;
+  const { streamKey: _, ...rest } = output;
+  return { ...rest, streamKey: key.length > 4 ? key.slice(0, 4) + '****' : '****' };
+}
 
 export default async function outputRoutes(fastify: FastifyInstance) {
   fastify.addHook('onRequest', fastify.authenticate);
 
   fastify.get('/outputs', async (request) => {
     const userId = request.user.sub;
-    return fastify.prisma.output.findMany({ where: { userId } });
+    const outputs = await fastify.prisma.output.findMany({ where: { userId } });
+    return outputs.map(maskStreamKey);
   });
 
-  fastify.post<{
-    Body: {
-      name: string;
-      platform: 'TWITCH' | 'YOUTUBE' | 'FACEBOOK' | 'CUSTOM';
-      rtmpUrl: string;
-      streamKey: string;
-    };
-  }>('/outputs', async (request, reply) => {
+  fastify.post('/outputs', async (request, reply) => {
+    const parsed = createOutputSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({
+        statusCode: 400,
+        error: 'VALIDATION_ERROR',
+        message: parsed.error.issues[0].message,
+      });
+    }
+
     const userId = request.user.sub;
-    const { name, platform, rtmpUrl, streamKey } = request.body;
+    const { name, platform, rtmpUrl, streamKey } = parsed.data;
 
     const count = await fastify.prisma.output.count({ where: { userId } });
     if (count >= MAX_OUTPUTS) {
@@ -34,16 +59,24 @@ export default async function outputRoutes(fastify: FastifyInstance) {
       data: { userId, name, platform, rtmpUrl, streamKey },
     });
 
-    return reply.code(201).send(output);
+    return reply.code(201).send(maskStreamKey(output));
   });
 
   fastify.put<{
     Params: { id: string };
-    Body: { name?: string; rtmpUrl?: string; streamKey?: string; enabled?: boolean };
   }>('/outputs/:id', async (request, reply) => {
+    const parsed = updateOutputSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({
+        statusCode: 400,
+        error: 'VALIDATION_ERROR',
+        message: parsed.error.issues[0].message,
+      });
+    }
+
     const userId = request.user.sub;
     const { id } = request.params;
-    const { name, rtmpUrl, streamKey, enabled } = request.body;
+    const { name, rtmpUrl, streamKey, enabled } = parsed.data;
 
     const existing = await fastify.prisma.output.findFirst({
       where: { id, userId },
@@ -66,7 +99,7 @@ export default async function outputRoutes(fastify: FastifyInstance) {
       },
     });
 
-    return updated;
+    return maskStreamKey(updated);
   });
 
   fastify.delete<{ Params: { id: string } }>('/outputs/:id', async (request, reply) => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterAll, vi } from 'vitest';
-import { getApp, closeApp, registerUser } from './helper.js';
+import { getApp, getInternalApp, closeApp, registerUser } from './helper.js';
 
 vi.mock('../src/lib/sqs.js', () => ({
   sendCommand: vi.fn(),
@@ -7,10 +7,13 @@ vi.mock('../src/lib/sqs.js', () => ({
 
 afterAll(() => closeApp());
 
+const INTERNAL_HEADERS = { 'x-internal-secret': process.env.INTERNAL_SECRET ?? 'test-secret' };
+
 /** Set up a user with an active stream session */
 async function setupActiveStream(email: string) {
   const { body } = await registerUser({ email });
   const app = await getApp();
+  const internal = await getInternalApp();
   const headers = { authorization: `Bearer ${body.accessToken}` };
 
   // Create output
@@ -27,12 +30,12 @@ async function setupActiveStream(email: string) {
   });
   const output = JSON.parse(outputRes.body);
 
-  // Simulate on_publish
-  await app.inject({
+  // Simulate on_publish via internal app
+  await internal.inject({
     method: 'POST',
     url: '/internal/stream/on-publish',
     payload: `app=live&name=${body.streamKey}&addr=10.0.0.1`,
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    headers: { 'content-type': 'application/x-www-form-urlencoded', ...INTERNAL_HEADERS },
   });
 
   return { headers, streamKey: body.streamKey, outputId: output.id };

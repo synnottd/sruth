@@ -33,17 +33,41 @@ export function RegisterForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit}>
-      <div>
-        <label htmlFor="email">Email</label>
-        <input id="email" name="email" type="email" required />
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="space-y-1">
+        <label htmlFor="email" className="block text-sm font-medium">
+          Email
+        </label>
+        <input
+          id="email"
+          name="email"
+          type="email"
+          required
+          className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm placeholder:text-zinc-500 focus:border-white focus:outline-none"
+        />
       </div>
-      <div>
-        <label htmlFor="password">Password</label>
-        <input id="password" name="password" type="password" required />
+      <div className="space-y-1">
+        <label htmlFor="password" className="block text-sm font-medium">
+          Password
+        </label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          required
+          className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm placeholder:text-zinc-500 focus:border-white focus:outline-none"
+        />
       </div>
-      {error && <p role="alert">{error}</p>}
-      <button type="submit" disabled={pending}>
+      {error && (
+        <p role="alert" className="text-sm text-red-400">
+          {error}
+        </p>
+      )}
+      <button
+        type="submit"
+        disabled={pending}
+        className="w-full rounded-md bg-white px-4 py-2 text-sm font-medium text-black transition-colors hover:bg-zinc-200 disabled:opacity-50"
+      >
         Create account
       </button>
     </form>

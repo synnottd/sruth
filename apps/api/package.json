@@ -17,22 +17,28 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
-    "@omega-stream/shared": "workspace:*",
-    "fastify": "^5.8.4",
-    "@fastify/jwt": "^10.0.0",
-    "@fastify/cookie": "^11.0.2",
-    "@prisma/client": "^7.6.0",
     "@aws-sdk/client-sqs": "^3.1024.0",
-    "ioredis": "^5.10.1",
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/jwt": "^10.0.0",
+    "@fastify/rate-limit": "^10.3.0",
+    "@omega-stream/shared": "workspace:*",
+    "@prisma/adapter-pg": "^7.6.0",
+    "@prisma/client": "^7.6.0",
     "bcryptjs": "^3.0.3",
+    "fastify": "^5.8.4",
+    "fastify-plugin": "^5.1.0",
+    "ioredis": "^5.10.1",
+    "pg": "^8.20.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "typescript": "^6.0.2",
-    "tsx": "^4.21.0",
-    "prisma": "^7.6.0",
-    "vitest": "^4.1.2",
     "@types/bcryptjs": "^3.0.0",
-    "@types/node": "^25.5.2"
+    "@types/node": "^25.5.2",
+    "@types/pg": "^8.20.0",
+    "prisma": "^7.6.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.3",
+    "vitest": "^4.1.2"
   }
 }

@@ -10,5 +10,8 @@
   },
   "devDependencies": {
     "typescript": "^6.0.2"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["@prisma/engines", "prisma", "esbuild"]
   }
 }

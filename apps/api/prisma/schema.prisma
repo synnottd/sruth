@@ -4,7 +4,18 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  streamKey    String    @unique @default(uuid())
+  createdAt    DateTime  @default(now())
+  deletedAt    DateTime?
+
+  outputs        Output[]
+  streamSessions StreamSession[]
 }
 
 enum Platform {
@@ -28,19 +39,6 @@ enum OutputSessionStatus {
   STOPPED
 }
 
-model User {
-  id           String    @id @default(uuid())
-  email        String    @unique
-  passwordHash String
-  streamKey    String    @unique @default(uuid())
-  createdAt    DateTime  @default(now())
-  // TODO: add Prisma client extension to auto-filter deletedAt IS NOT NULL across all queries
-  deletedAt    DateTime?
-
-  outputs        Output[]
-  streamSessions StreamSession[]
-}
-
 model Output {
   id        String    @id @default(uuid())
   userId    String
@@ -57,6 +55,7 @@ model Output {
   outputSessions OutputSession[]
 
   @@unique([userId, streamKey])
+  @@index([userId])
 }
 
 model StreamSession {
@@ -65,8 +64,8 @@ model StreamSession {
   status      StreamSessionStatus @default(STARTING)
   startedAt   DateTime            @default(now())
   endedAt     DateTime?
-  avgBitrate  Int?
-  peakBitrate Int?
+  avgBitrate  Float?
+  peakBitrate Float?
 
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   outputSessions OutputSession[]

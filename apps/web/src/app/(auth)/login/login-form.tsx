@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiClient, ApiError } from "@/lib/api/client";
+import { setAccessToken } from "@/lib/auth";
 
 export function LoginForm() {
   const router = useRouter();
@@ -19,7 +20,8 @@ export function LoginForm() {
     const password = form.get("password") as string;
 
     try {
-      await apiClient.post("/auth/login", { email, password });
+      const result = await apiClient.post<{ accessToken: string }>("/auth/login", { email, password });
+      setAccessToken(result.accessToken);
       router.push("/dashboard");
     } catch (err) {
       if (err instanceof ApiError) {

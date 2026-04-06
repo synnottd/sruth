@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import cors from '@fastify/cors';
 import prismaPlugin from './plugins/prisma.js';
 import redisPlugin from './plugins/redis.js';
 import authPlugin from './plugins/auth.js';
@@ -44,6 +45,12 @@ export async function buildApp() {
   const app = Fastify({ logger: loggerConfig });
 
   addFormParser(app);
+
+  // CORS
+  await app.register(cors, {
+    origin: process.env.CORS_ORIGIN ?? false,
+    credentials: true,
+  });
 
   // Plugins
   await app.register(prismaPlugin);

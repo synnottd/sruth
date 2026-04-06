@@ -95,23 +95,36 @@ export default async function internalStreamRoutes(fastify: FastifyInstance) {
     await fastify.redis.set(`stream:${streamKey}:ingest_ip`, clientIp, 'EX', ACTIVE_TTL);
     await fastify.redis.set(`stream:${streamKey}:cooldown`, '1', 'EX', COOLDOWN_TTL);
 
-    // 9. Send SQS start command
+    // 9. Send SQS start command — if this fails, roll back so the user can retry
     const outputMap = new Map(outputs.map((o) => [o.id, o]));
-    await sendCommand({
-      type: 'start',
-      userId: user.id,
-      sessionId: session.id,
-      ingestIp: clientIp,
-      streamKey,
-      outputs: outputSessions.map((os) => {
-        const output = outputMap.get(os.outputId)!;
-        return {
-          outputSessionId: os.id,
-          rtmpUrl: output.rtmpUrl,
-          streamKey: output.streamKey,
-        };
-      }),
-    });
+    try {
+      await sendCommand({
+        type: 'start',
+        userId: user.id,
+        sessionId: session.id,
+        ingestIp: clientIp,
+        streamKey,
+        outputs: outputSessions.map((os) => {
+          const output = outputMap.get(os.outputId)!;
+          return {
+            outputSessionId: os.id,
+            rtmpUrl: output.rtmpUrl,
+            streamKey: output.streamKey,
+          };
+        }),
+      });
+    } catch {
+      // Roll back Redis + DB so the user isn't stuck with a phantom session
+      await fastify.redis.del(`stream:${streamKey}:active`);
+      await fastify.redis.del(`stream:${streamKey}:ingest_ip`);
+      await fastify.prisma.outputSession.deleteMany({ where: { sessionId: session.id } });
+      await fastify.prisma.streamSession.delete({ where: { id: session.id } });
+      return reply.code(503).send({
+        statusCode: 503,
+        error: 'WORKER_UNAVAILABLE',
+        message: 'Failed to notify worker — stream rejected, please retry',
+      });
+    }
 
     // 10. Return 200
     return reply.code(200).send({ status: 'ok' });

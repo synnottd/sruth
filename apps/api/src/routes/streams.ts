@@ -19,9 +19,14 @@ export default async function streamsRoutes(fastify: FastifyInstance) {
     // Enrich with Redis metrics
     return Promise.all(
       sessions.map(async (session) => {
-        const metricsRaw = await fastify.redis.get(`stream:${session.id}:bitrate`);
-        const metrics = metricsRaw ? JSON.parse(metricsRaw) : null;
-        return { ...session, metrics };
+        try {
+          const metricsRaw = await fastify.redis.get(`stream:${session.id}:bitrate`);
+          const metrics = metricsRaw ? JSON.parse(metricsRaw) : null;
+          return { ...session, metrics };
+        } catch (err) {
+          fastify.log.warn({ sessionId: session.id, err }, 'Failed to fetch Redis metrics');
+          return { ...session, metrics: null };
+        }
       }),
     );
   });

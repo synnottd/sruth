@@ -34,9 +34,14 @@ function addFormParser(app: ReturnType<typeof Fastify>) {
   );
 }
 
+const loggerConfig = {
+  level: process.env.LOG_LEVEL ?? 'info',
+  redact: ['req.headers.authorization', 'req.headers["x-internal-secret"]'],
+};
+
 /** Public API server — auth, outputs, streams, health */
 export async function buildApp() {
-  const app = Fastify({ logger: false });
+  const app = Fastify({ logger: loggerConfig });
 
   addFormParser(app);
 
@@ -59,7 +64,7 @@ export async function buildApp() {
 
 /** Internal API server — nginx-rtmp callbacks, isolated port */
 export async function buildInternalApp() {
-  const app = Fastify({ logger: false });
+  const app = Fastify({ logger: loggerConfig });
 
   addFormParser(app);
 

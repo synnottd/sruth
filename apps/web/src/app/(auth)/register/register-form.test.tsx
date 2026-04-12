@@ -2,10 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-const { mockPush, mockPost, mockSetAccessToken, MockApiError } = vi.hoisted(() => {
+const { mockPush, mockPost, MockApiError } = vi.hoisted(() => {
   const mockPush = vi.fn();
   const mockPost = vi.fn();
-  const mockSetAccessToken = vi.fn();
   class MockApiError extends Error {
     constructor(
       public status: number,
@@ -15,7 +14,7 @@ const { mockPush, mockPost, mockSetAccessToken, MockApiError } = vi.hoisted(() =
       super(message);
     }
   }
-  return { mockPush, mockPost, mockSetAccessToken, MockApiError };
+  return { mockPush, mockPost, MockApiError };
 });
 
 vi.mock("next/navigation", () => ({
@@ -25,10 +24,6 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/api/client", () => ({
   apiClient: { post: mockPost },
   ApiError: MockApiError,
-}));
-
-vi.mock("@/lib/auth", () => ({
-  setAccessToken: mockSetAccessToken,
 }));
 
 import { RegisterForm } from "./register-form";
@@ -52,7 +47,6 @@ describe("RegisterForm", () => {
       email: "new@example.com",
       password: "securepass123",
     });
-    expect(mockSetAccessToken).toHaveBeenCalledWith("tok_123");
     expect(mockPush).toHaveBeenCalledWith("/dashboard");
   });
 

@@ -67,8 +67,8 @@ export function LogsView() {
       >
         {logs.length === 0 ? (
           <p className="text-zinc-500">
-            Waiting for log data... SSE connection will be established when the
-            API endpoint is available.
+            Log streaming is not yet implemented. This page will show real-time
+            output logs once the SSE endpoint is available.
           </p>
         ) : (
           logs.map((line, i) => (

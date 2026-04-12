@@ -2,10 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-const { mockPush, mockPost, mockClearAccessToken } = vi.hoisted(() => ({
+const { mockPush, mockPost } = vi.hoisted(() => ({
   mockPush: vi.fn(),
   mockPost: vi.fn(),
-  mockClearAccessToken: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -14,10 +13,6 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/api/client", () => ({
   apiClient: { post: mockPost },
-}));
-
-vi.mock("@/lib/auth", () => ({
-  clearAccessToken: mockClearAccessToken,
 }));
 
 import { LogoutButton } from "./logout-button";
@@ -36,7 +31,6 @@ describe("LogoutButton", () => {
     await user.click(screen.getByRole("button", { name: /log out/i }));
 
     expect(mockPost).toHaveBeenCalledWith("/auth/logout");
-    expect(mockClearAccessToken).toHaveBeenCalled();
     expect(mockPush).toHaveBeenCalledWith("/login");
   });
 
@@ -48,7 +42,6 @@ describe("LogoutButton", () => {
 
     await user.click(screen.getByRole("button", { name: /log out/i }));
 
-    expect(mockClearAccessToken).toHaveBeenCalled();
     expect(mockPush).toHaveBeenCalledWith("/login");
   });
 });

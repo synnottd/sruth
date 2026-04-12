@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useOutputs, useDeleteOutput } from "@/lib/api/hooks";
 import { useToast } from "@/components/toast";
+import { StatusBadge } from "@/components/status-badge";
 import type { Output } from "@/lib/api/types";
 
 function OutputCard({
@@ -20,15 +21,7 @@ function OutputCard({
           <h3 className="font-medium">{output.name}</h3>
           <p className="text-sm text-zinc-400">{output.platform}</p>
         </div>
-        <span
-          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-            output.enabled
-              ? "bg-green-500/20 text-green-400"
-              : "bg-zinc-500/20 text-zinc-400"
-          }`}
-        >
-          {output.enabled ? "Enabled" : "Disabled"}
-        </span>
+        <StatusBadge label={output.enabled ? "Enabled" : "Disabled"} />
       </div>
       <div className="mt-3 flex items-center gap-2">
         <Link
@@ -132,12 +125,15 @@ export function OutputsList() {
 
       {deletingId && (
         <ConfirmDialog
-          onConfirm={() => {
-            deleteOutput.mutate(deletingId, {
-              onSuccess: () => toast("Output deleted"),
-              onError: () => toast("Failed to delete output", "error"),
-            });
-            setDeletingId(null);
+          onConfirm={async () => {
+            try {
+              await deleteOutput.mutateAsync(deletingId);
+              toast("Output deleted");
+            } catch {
+              toast("Failed to delete output", "error");
+            } finally {
+              setDeletingId(null);
+            }
           }}
           onCancel={() => setDeletingId(null)}
         />

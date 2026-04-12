@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import { apiClient } from "@/lib/api/client";
-import { clearAccessToken } from "@/lib/auth";
 
 export function LogoutButton() {
   const router = useRouter();
@@ -13,7 +12,6 @@ export function LogoutButton() {
     } catch {
       // Always redirect even if API call fails
     }
-    clearAccessToken();
     router.push("/login");
   }
 

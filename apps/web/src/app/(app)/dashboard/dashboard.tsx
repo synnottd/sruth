@@ -1,25 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useOutputs, useActiveStreams } from "@/lib/api/hooks";
+import { useOutputs, useActiveStream } from "@/lib/api/hooks";
+import { StatusBadge } from "@/components/status-badge";
 import type { Output, StreamSession } from "@/lib/api/types";
-
-function StatusBadge({ status }: { status: string }) {
-  const colors: Record<string, string> = {
-    LIVE: "bg-green-500/20 text-green-400",
-    STARTING: "bg-yellow-500/20 text-yellow-400",
-    ERROR: "bg-red-500/20 text-red-400",
-    STOPPED: "bg-zinc-500/20 text-zinc-400",
-  };
-
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${colors[status] ?? colors.STOPPED}`}
-    >
-      {status}
-    </span>
-  );
-}
 
 function HeroBanner({ activeStream }: { activeStream: StreamSession | null }) {
   if (!activeStream) {
@@ -65,7 +49,7 @@ function OutputCard({ output, outputSession }: { output: Output; outputSession?:
           <h3 className="font-medium">{output.name}</h3>
           <p className="text-sm text-zinc-400">{output.platform}</p>
         </div>
-        {outputSession && <StatusBadge status={outputSession.status} />}
+        {outputSession && <StatusBadge label={outputSession.status} />}
       </div>
       {outputSession?.lastError && (
         <p className="mt-2 text-sm text-red-400">{outputSession.lastError}</p>
@@ -88,13 +72,11 @@ function DashboardSkeleton() {
 
 export function Dashboard() {
   const { data: outputs, isLoading: outputsLoading } = useOutputs();
-  const { data: activeStreams, isLoading: streamsLoading } = useActiveStreams();
+  const { data: activeStream, isLoading: streamsLoading } = useActiveStream();
 
   if (outputsLoading || streamsLoading) {
     return <DashboardSkeleton />;
   }
-
-  const activeStream = activeStreams?.[0] ?? null;
 
   // Build a lookup from outputId to outputSession for the active stream
   const outputSessionMap = new Map<string, { status: string; lastError: string | null }>();

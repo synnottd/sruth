@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiClient, ApiError } from "@/lib/api/client";
+import { ApiError } from "@/lib/api/client";
 import { useCreateOutput } from "@/lib/api/hooks";
 import { useToast } from "@/components/toast";
+import type { Platform } from "@/lib/api/types";
 
-const PLATFORM_PRESETS: Record<string, string> = {
+const PLATFORM_PRESETS: Record<Platform, string> = {
   TWITCH: "rtmp://live.twitch.tv/app",
   YOUTUBE: "rtmp://a.rtmp.youtube.com/live2",
   FACEBOOK: "rtmps://live-api-s.facebook.com:443/rtmp/",
@@ -18,12 +19,12 @@ export function CreateOutputForm() {
   const createOutput = useCreateOutput();
   const { toast } = useToast();
   const [error, setError] = useState<string | null>(null);
-  const [platform, setPlatform] = useState("TWITCH");
+  const [platform, setPlatform] = useState<Platform>("TWITCH");
   const [rtmpUrl, setRtmpUrl] = useState(PLATFORM_PRESETS.TWITCH);
 
   function handlePlatformChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const value = e.target.value;
-    setPlatform(value);
+    setPlatform(value as Platform);
     setRtmpUrl(PLATFORM_PRESETS[value] ?? "");
   }
 
@@ -36,7 +37,7 @@ export function CreateOutputForm() {
     const streamKey = form.get("streamKey") as string;
 
     try {
-      await apiClient.post("/outputs", { name, platform, rtmpUrl, streamKey });
+      await createOutput.mutateAsync({ name, platform, rtmpUrl, streamKey });
       toast("Output created");
       router.push("/outputs");
     } catch (err) {

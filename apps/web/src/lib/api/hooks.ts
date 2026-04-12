@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "./client";
-import type { Output, StreamSession, StreamInfo } from "./types";
+import type { Output, Platform, StreamSession, StreamInfo } from "./types";
 
 export function useOutputs() {
   return useQuery({
@@ -9,10 +9,13 @@ export function useOutputs() {
   });
 }
 
-export function useActiveStreams() {
+export function useActiveStream() {
   return useQuery({
     queryKey: ["streams", "active"],
-    queryFn: () => apiClient.get<StreamSession[]>("/streams/active"),
+    queryFn: async () => {
+      const streams = await apiClient.get<StreamSession[]>("/streams/active");
+      return streams[0] ?? null;
+    },
     refetchInterval: 5_000,
   });
 }
@@ -20,7 +23,7 @@ export function useActiveStreams() {
 export function useCreateOutput() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name: string; platform: string; rtmpUrl: string; streamKey: string }) =>
+    mutationFn: (data: { name: string; platform: Platform; rtmpUrl: string; streamKey: string }) =>
       apiClient.post<Output>("/outputs", data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["outputs"] }),
   });

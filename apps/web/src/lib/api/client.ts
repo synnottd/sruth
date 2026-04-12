@@ -14,10 +14,15 @@ export class ApiError extends Error {
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   let response: Response;
   try {
+    const headers: Record<string, string> = {};
+    if (body !== undefined) {
+      headers["Content-Type"] = "application/json";
+    }
+
     response = await fetch(`${API_BASE}${path}`, {
       method,
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers,
       ...(body !== undefined && { body: JSON.stringify(body) }),
     });
   } catch (err) {

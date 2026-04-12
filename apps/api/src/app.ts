@@ -86,7 +86,9 @@ export async function buildInternalApp() {
       request.log.warn('INTERNAL_SECRET not configured');
       return reply.code(500).send({ error: 'Internal routes misconfigured' });
     }
-    if (request.headers['x-internal-secret'] !== expected) {
+    const provided = request.headers['x-internal-secret']
+      ?? (request.query as Record<string, string>)?.secret;
+    if (provided !== expected) {
       return reply.code(403).send({ error: 'Forbidden' });
     }
   });

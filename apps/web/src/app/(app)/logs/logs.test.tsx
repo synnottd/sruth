@@ -62,7 +62,7 @@ describe("LogsView", () => {
     render(<LogsView />, { wrapper: createTestWrapper() });
 
     await screen.findByLabelText(/output/i);
-    expect(screen.getByText(/waiting for log data/i)).toBeInTheDocument();
+    expect(screen.getByText(/log streaming is not yet implemented/i)).toBeInTheDocument();
   });
 
   it("changes selected output", async () => {

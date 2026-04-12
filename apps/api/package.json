@@ -4,14 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "set -a && . ../../.env && set +a && tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "vitest run",
-    "db:push": "prisma db push --config prisma/prisma.config.ts",
-    "db:studio": "prisma studio --config prisma/prisma.config.ts",
-    "db:generate": "prisma generate --config prisma/prisma.config.ts",
-    "db:seed": "prisma db seed --config prisma/prisma.config.ts"
+    "db:push": "set -a && . ../../.env && set +a && prisma db push --config prisma/prisma.config.ts",
+    "db:studio": "set -a && . ../../.env && set +a && prisma studio --config prisma/prisma.config.ts",
+    "db:generate": "set -a && . ../../.env && set +a && prisma generate --config prisma/prisma.config.ts",
+    "db:seed": "set -a && . ../../.env && set +a && prisma db seed --config prisma/prisma.config.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

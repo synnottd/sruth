@@ -41,15 +41,33 @@ services:
       timeout: 5s
       retries: 5
 
-  # ingest:
-  #   build:
-  #     context: ./services/ingest
-  #   ports:
-  #     - '1935:1935'   # RTMP
-  #     - '8080:8080'   # nginx stat/control
-  #   depends_on:
-  #     - postgres
-  #     - redis
+  ingest:
+    build:
+      context: ./services/ingest
+    environment:
+      API_HOST: host.docker.internal:3001
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+    ports:
+      - '1935:1935'
+      - '8080:8080'
+    healthcheck:
+      test: ['CMD', 'curl', '-sf', 'http://localhost:8080/health']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  sink:
+    image: tiangolo/nginx-rtmp:latest
+    ports:
+      - '1936:1935'
+      - '8081:8080'
+    volumes:
+      - ./services/worker/test/nginx-sink.conf:/etc/nginx/nginx.conf:ro
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O-', 'http://localhost:8080/health']
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
 volumes:
   postgres_data:

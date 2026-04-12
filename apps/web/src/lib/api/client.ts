@@ -11,23 +11,56 @@ export class ApiError extends Error {
   }
 }
 
+let refreshPromise: Promise<boolean> | null = null;
+
+async function tryRefresh(): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/refresh`, {
+      method: "POST",
+      credentials: "include",
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+function doFetch(method: string, path: string, body?: unknown): Promise<Response> {
+  const headers: Record<string, string> = {};
+  if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+  }
+  return fetch(`${API_BASE}${path}`, {
+    method,
+    credentials: "include",
+    headers,
+    ...(body !== undefined && { body: JSON.stringify(body) }),
+  });
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   let response: Response;
   try {
-    const headers: Record<string, string> = {};
-    if (body !== undefined) {
-      headers["Content-Type"] = "application/json";
-    }
-
-    response = await fetch(`${API_BASE}${path}`, {
-      method,
-      credentials: "include",
-      headers,
-      ...(body !== undefined && { body: JSON.stringify(body) }),
-    });
+    response = await doFetch(method, path, body);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Network error";
     throw new ApiError(0, "NETWORK_ERROR", message);
+  }
+
+  // On 401, attempt a single token refresh and retry
+  if (response.status === 401 && !path.startsWith("/auth/")) {
+    // Coalesce concurrent refresh attempts into one request
+    refreshPromise ??= tryRefresh().finally(() => { refreshPromise = null; });
+    const refreshed = await refreshPromise;
+
+    if (refreshed) {
+      try {
+        response = await doFetch(method, path, body);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Network error";
+        throw new ApiError(0, "NETWORK_ERROR", message);
+      }
+    }
   }
 
   if (response.status === 204) {

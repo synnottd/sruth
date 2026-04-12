@@ -17,8 +17,8 @@ rtmp {
             record off;
 
             notify_method post;
-            on_publish http://${API_HOST}/internal/stream/on-publish;
-            on_publish_done http://${API_HOST}/internal/stream/on-publish-done;
+            on_publish http://${API_HOST}/internal/stream/on-publish?secret=${INTERNAL_SECRET};
+            on_publish_done http://${API_HOST}/internal/stream/on-publish-done?secret=${INTERNAL_SECRET};
         }
     }
 }

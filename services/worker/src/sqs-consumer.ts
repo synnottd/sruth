@@ -49,7 +49,11 @@ export class SqsConsumer {
 
   constructor() {
     this.sqs = new SQSClient(
-      config.sqsEndpoint ? { endpoint: config.sqsEndpoint } : {},
+      config.sqsEndpoint ? {
+        endpoint: config.sqsEndpoint,
+        region: process.env.AWS_REGION ?? 'us-east-1',
+        credentials: { accessKeyId: 'local', secretAccessKey: 'local' },
+      } : {},
     );
   }
 

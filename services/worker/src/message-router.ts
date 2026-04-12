@@ -66,13 +66,13 @@ export class MessageRouter {
       const sub = getSubscriber();
       await sub.unsubscribe(this.channelKey());
     } catch {
-      // Ignore unsubscribe errors during shutdown
+      console.warn('[Router] Unsubscribe failed during shutdown');
     }
     // Clean up heartbeat key
     try {
       await getRedis().del(this.heartbeatKey());
     } catch {
-      // Best effort
+      console.warn('[Router] Heartbeat cleanup failed during shutdown');
     }
     this.started = false;
     console.log('[Router] Stopped');
@@ -133,7 +133,8 @@ export class MessageRouter {
     const heartbeat = await redis.get(this.heartbeatKeyFor(ownerId));
 
     if (heartbeat) {
-      // Owner is alive — re-route via pub/sub
+      // Owner is alive — re-route the *command* (not stream data) via pub/sub.
+      // Only one worker ever holds the FFmpeg process for a given session.
       console.log('[Router] Re-routing', command.type, 'for session', command.sessionId, 'to worker', ownerId);
       try {
         await redis.publish(

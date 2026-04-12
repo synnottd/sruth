@@ -14,9 +14,10 @@ function parseMessage(body: string): WorkerCommand | null {
   try {
     const parsed = JSON.parse(body);
     if (!parsed || typeof parsed !== 'object') return null;
-    if (!VALID_TYPES.has(parsed.type)) return null;
-    if (typeof parsed.sessionId !== 'string') return null;
-    if (typeof parsed.userId !== 'string') return null;
+    if (!VALID_TYPES.has(parsed.type) || typeof parsed.sessionId !== 'string' || typeof parsed.userId !== 'string') {
+      console.warn('[SQS] Invalid message structure:', parsed.type, parsed.sessionId);
+      return null;
+    }
 
     // Validate command-specific required fields
     switch (parsed.type) {
@@ -36,6 +37,7 @@ function parseMessage(body: string): WorkerCommand | null {
 
     return parsed as WorkerCommand;
   } catch {
+    console.warn('[SQS] Failed to parse message body:', body);
     return null;
   }
 }

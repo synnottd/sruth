@@ -1,0 +1,49 @@
+services:
+  ingest:
+    image: tiangolo/nginx-rtmp:latest
+    ports:
+      - '1935:1935'
+      - '8080:8080'
+    volumes:
+      - ./test/nginx-ingest.conf:/etc/nginx/nginx.conf:ro
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O-', 'http://localhost:8080/health']
+      interval: 2s
+      timeout: 3s
+      retries: 10
+
+  sink:
+    image: tiangolo/nginx-rtmp:latest
+    ports:
+      - '1936:1935'
+      - '8081:8080'
+    volumes:
+      - ./test/nginx-sink.conf:/etc/nginx/nginx.conf:ro
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O-', 'http://localhost:8080/health']
+      interval: 2s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6399:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 2s
+      timeout: 3s
+      retries: 10
+
+  elasticmq:
+    image: softwaremill/elasticmq-native:1.6.9
+    ports:
+      - '9324:9324'
+      - '9325:9325'
+    volumes:
+      - ./elasticmq.conf:/opt/elasticmq.conf:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O- http://localhost:9325 || exit 1']
+      interval: 2s
+      timeout: 3s
+      retries: 10

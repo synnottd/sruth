@@ -25,6 +25,19 @@ services:
       timeout: 5s
       retries: 5
 
+  elasticmq:
+    image: softwaremill/elasticmq-native:1.6.9
+    ports:
+      - '9324:9324'
+      - '9325:9325'
+    volumes:
+      - ./services/worker/elasticmq.conf:/opt/elasticmq.conf
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O- http://localhost:9325 || exit 1']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   # ingest:
   #   build:
   #     context: ./services/ingest

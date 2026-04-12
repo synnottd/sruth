@@ -3,7 +3,7 @@ import {
   ReceiveMessageCommand,
   DeleteMessageCommand,
 } from '@aws-sdk/client-sqs';
-import type { WorkerCommand } from '@omega-stream/shared';
+import { sqsClientConfig, type WorkerCommand } from '@omega-stream/shared';
 import { config } from './config.js';
 
 export type MessageHandler = (command: WorkerCommand) => Promise<void>;
@@ -49,7 +49,7 @@ export class SqsConsumer {
 
   constructor() {
     this.sqs = new SQSClient(
-      config.sqsEndpoint ? { endpoint: config.sqsEndpoint } : {},
+      sqsClientConfig(config.sqsEndpoint, process.env.AWS_REGION),
     );
   }
 

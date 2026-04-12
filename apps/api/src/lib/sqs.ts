@@ -1,8 +1,10 @@
 import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
-import type { WorkerCommand } from '@omega-stream/shared';
+import { sqsClientConfig, type WorkerCommand } from '@omega-stream/shared';
 
 const QUEUE_URL = process.env.SQS_QUEUE_URL;
-const sqs = QUEUE_URL ? new SQSClient({}) : null;
+const sqs = QUEUE_URL
+  ? new SQSClient(sqsClientConfig(process.env.SQS_ENDPOINT, process.env.AWS_REGION))
+  : null;
 
 export async function sendCommand(command: WorkerCommand): Promise<void> {
   // Per-output stops include outputSessionId to avoid colliding with

@@ -8,6 +8,7 @@ const MAX_RETRIES = 5;
 const BACKOFF_BASE_MS = 1000; // 1s, 2s, 4s, 8s, 16s
 const INGEST_PORT = 1935;
 const INGEST_APP = 'live';
+const INGEST_IP_OVERRIDE = process.env.INGEST_IP_OVERRIDE;
 
 /** Redact stream keys from RTMP URLs for safe logging. */
 function redactStreamKey(url: string): string {
@@ -267,7 +268,8 @@ export class FfmpegManager {
   }
 
   private spawnFfmpeg(session: Session, output: OutputProcess): { stderrDone: Promise<void> } {
-    const inputUrl = `rtmp://${session.ingestIp}:${INGEST_PORT}/${INGEST_APP}/${session.streamKey}`;
+    const ingestIp = INGEST_IP_OVERRIDE ?? session.ingestIp;
+    const inputUrl = `rtmp://${ingestIp}:${INGEST_PORT}/${INGEST_APP}/${session.streamKey}`;
     const outputUrl = `${output.rtmpUrl}/${output.streamKey}`;
 
     const args = [

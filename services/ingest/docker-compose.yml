@@ -6,6 +6,7 @@ services:
       - '8080:8080'
     environment:
       API_HOST: mock-api:3001
+      INTERNAL_SECRET: test-secret
     depends_on:
       mock-api:
         condition: service_healthy

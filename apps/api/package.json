@@ -4,14 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "dotenv -e ../../.env -- tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "vitest run",
-    "db:push": "prisma db push --config prisma/prisma.config.ts",
-    "db:studio": "prisma studio --config prisma/prisma.config.ts",
-    "db:generate": "prisma generate --config prisma/prisma.config.ts",
-    "db:seed": "prisma db seed --config prisma/prisma.config.ts"
+    "db:push": "dotenv -e ../../.env -- prisma db push --config prisma/prisma.config.ts",
+    "db:studio": "dotenv -e ../../.env -- prisma studio --config prisma/prisma.config.ts",
+    "db:generate": "dotenv -e ../../.env -- prisma generate --config prisma/prisma.config.ts",
+    "db:seed": "dotenv -e ../../.env -- prisma db seed --config prisma/prisma.config.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

@@ -9,9 +9,14 @@
     "test": "pnpm --recursive test"
   },
   "devDependencies": {
+    "dotenv-cli": "^11.0.0",
     "typescript": "^6.0.2"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["@prisma/engines", "prisma", "esbuild"]
+    "onlyBuiltDependencies": [
+      "@prisma/engines",
+      "prisma",
+      "esbuild"
+    ]
   }
 }

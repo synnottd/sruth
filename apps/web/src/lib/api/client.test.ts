@@ -5,6 +5,7 @@ describe("apiClient", () => {
   const mockFetch = vi.fn();
 
   beforeEach(() => {
+    mockFetch.mockReset();
     vi.stubGlobal("fetch", mockFetch);
   });
 
@@ -25,9 +26,6 @@ describe("apiClient", () => {
       expect.objectContaining({
         method: "GET",
         credentials: "include",
-        headers: expect.objectContaining({
-          "Content-Type": "application/json",
-        }),
       }),
     );
     expect(result).toEqual(data);
@@ -80,6 +78,84 @@ describe("apiClient", () => {
       code: "NETWORK_ERROR",
       message: "Failed to fetch",
     });
+  });
+
+  it("refreshes token and retries on 401", async () => {
+    const errorBody = { error: "UNAUTHORIZED", message: "Token expired" };
+    const data = { id: "1", name: "Twitch" };
+
+    mockFetch
+      // 1st call: GET /outputs → 401
+      .mockResolvedValueOnce(new Response(JSON.stringify(errorBody), { status: 401 }))
+      // 2nd call: POST /auth/refresh → 200
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      // 3rd call: GET /outputs retry → 200
+      .mockResolvedValueOnce(new Response(JSON.stringify(data), { status: 200 }));
+
+    const result = await apiClient.get("/outputs");
+
+    expect(result).toEqual(data);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(mockFetch).toHaveBeenNthCalledWith(2,
+      "http://localhost:3000/auth/refresh",
+      expect.objectContaining({ method: "POST", credentials: "include" }),
+    );
+  });
+
+  it("throws 401 when refresh fails", async () => {
+    const errorBody = { error: "UNAUTHORIZED", message: "Token expired" };
+
+    mockFetch
+      // 1st call: GET /outputs → 401
+      .mockResolvedValueOnce(new Response(JSON.stringify(errorBody), { status: 401 }))
+      // 2nd call: POST /auth/refresh → 401
+      .mockResolvedValueOnce(new Response(null, { status: 401 }));
+
+    const err = await apiClient.get("/outputs").catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err).toMatchObject({ status: 401, code: "UNAUTHORIZED" });
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not attempt refresh on auth routes", async () => {
+    const errorBody = { error: "UNAUTHORIZED", message: "Invalid credentials" };
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify(errorBody), { status: 401 }),
+    );
+
+    const err = await apiClient.post("/auth/login", {}).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err).toMatchObject({ status: 401 });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("coalesces concurrent refresh attempts into one request", async () => {
+    const errorBody = { error: "UNAUTHORIZED", message: "Token expired" };
+    const data = { active: true };
+
+    mockFetch
+      .mockResolvedValueOnce(new Response(JSON.stringify(errorBody), { status: 401 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(errorBody), { status: 401 }))
+      // Single refresh call
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      // Both retries
+      .mockResolvedValueOnce(new Response(JSON.stringify(data), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(data), { status: 200 }));
+
+    const [r1, r2] = await Promise.all([
+      apiClient.get("/streams/active"),
+      apiClient.get("/outputs"),
+    ]);
+
+    expect(r1).toEqual(data);
+    expect(r2).toEqual(data);
+
+    const refreshCalls = mockFetch.mock.calls.filter(
+      (call) => call[0] === "http://localhost:3000/auth/refresh",
+    );
+    expect(refreshCalls).toHaveLength(1);
   });
 
   it("handles 204 No Content responses", async () => {

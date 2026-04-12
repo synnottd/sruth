@@ -17,8 +17,8 @@ rtmp {
             record off;
 
             notify_method post;
-            on_publish http://${API_HOST}/internal/stream/on-publish;
-            on_publish_done http://${API_HOST}/internal/stream/on-publish-done;
+            on_publish http://127.0.0.1:8080/callbacks/on-publish;
+            on_publish_done http://127.0.0.1:8080/callbacks/on-publish-done;
         }
     }
 }
@@ -35,6 +35,21 @@ http {
 
         location /health {
             return 200 "ok\n";
+        }
+
+        # Proxy nginx-rtmp callbacks to the API, injecting the secret as a header.
+        # nginx-rtmp on_publish cannot send custom headers, so we bounce through
+        # a local HTTP location that adds X-Internal-Secret via proxy_set_header.
+        location /callbacks/on-publish {
+            proxy_pass http://${API_HOST}/internal/stream/on-publish;
+            proxy_set_header X-Internal-Secret ${INTERNAL_SECRET};
+            proxy_set_header Host $host;
+        }
+
+        location /callbacks/on-publish-done {
+            proxy_pass http://${API_HOST}/internal/stream/on-publish-done;
+            proxy_set_header X-Internal-Secret ${INTERNAL_SECRET};
+            proxy_set_header Host $host;
         }
     }
 }

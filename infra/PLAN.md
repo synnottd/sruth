@@ -363,7 +363,7 @@ When ready for production, the following changes are needed:
 | NAT Gateway | Move tasks to private subnets |
 | Auto-scaling | Per-service scaling policies (CPU, SQS depth) |
 | Monitoring | CloudWatch alarms, SNS topic, dashboards |
-| Aurora | Multi-AZ, min ACU 0.5, backup retention 7+ days |
+| Database | Replace RDS Postgres t4g.micro with Aurora Serverless v2 (Multi-AZ, min ACU 0.5, backup retention 7+ days) |
 | Per-service SGs | Separate security groups for least-privilege isolation |
 | Per-service IAM | Individual task roles with minimal permissions |
 | SSE/WS strategy | Server 30s heartbeat, ALB 300s idle timeout, CF response timeout tuning |
@@ -382,7 +382,7 @@ When ready for production, the following changes are needed:
 | 6 | ECR repos | CDK-managed, `removalPolicy: RETAIN` | Survives `cdk destroy` |
 | 7 | Stack count | 3 stacks (Network, Data, Service) | Minimal complexity for test mode |
 | 8 | IAM roles | Shared execution role, single task role | Combined permissions — split per-service for prod |
-| 9 | Aurora | 0 ACU min, auto-pause 5 min, no backups, single AZ | Free when idle, ~15s resume latency acceptable for testing |
+| 9 | Database | RDS Postgres `db.t4g.micro` instead of Aurora Serverless v2 | Free-tier account requires Aurora express config (no VPC, IAM auth only); RDS instance is drop-in compatible with Prisma password auth. Swap to Aurora Serverless v2 when account is upgraded. |
 | 10 | Cache | ElastiCache Serverless (Valkey) | Pay-per-use, built-in HA, TLS+auth by default |
 | 11 | Secrets injection | ECS native `secrets` field | Simplest approach, no app-level SDK code |
 | 12 | Ingest discovery | Redis registry (IP + heartbeat) | Same code path locally and in AWS |

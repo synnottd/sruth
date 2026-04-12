@@ -54,7 +54,6 @@ model Output {
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   outputSessions OutputSession[]
 
-  @@unique([userId, streamKey])
   @@index([userId])
 }
 

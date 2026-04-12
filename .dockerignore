@@ -1,0 +1,15 @@
+node_modules
+**/node_modules
+dist
+**/dist
+.next
+**/.next
+.env
+.env.*
+*.test.*
+**/__tests__
+infra/cdk.out
+.git
+.gitignore
+coverage
+**/coverage

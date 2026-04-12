@@ -12,6 +12,10 @@ export default fp(async (fastify: FastifyInstance) => {
       }
       return 'dev-secret';
     })(),
+    cookie: {
+      cookieName: 'accessToken',
+      signed: false,
+    },
   });
 
   fastify.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {

@@ -4,7 +4,26 @@ import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 
 const SALT_ROUNDS = 12;
+const ACCESS_EXPIRY_SECONDS = 15 * 60; // 15 minutes
 const REFRESH_EXPIRY_SECONDS = 7 * 24 * 60 * 60; // 7 days
+
+const IS_PROD = process.env.NODE_ENV === 'production';
+
+const ACCESS_COOKIE_OPTS = {
+  httpOnly: true,
+  secure: IS_PROD,
+  sameSite: 'strict' as const,
+  path: '/',
+  maxAge: ACCESS_EXPIRY_SECONDS,
+};
+
+const REFRESH_COOKIE_OPTS = {
+  httpOnly: true,
+  secure: IS_PROD,
+  sameSite: 'strict' as const,
+  path: '/auth',
+  maxAge: REFRESH_EXPIRY_SECONDS,
+};
 
 export default async function authRoutes(fastify: FastifyInstance) {
   await fastify.register(rateLimit, {
@@ -43,7 +62,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
     const accessToken = fastify.jwt.sign(
       { sub: user.id, email: user.email },
-      { expiresIn: process.env.JWT_ACCESS_EXPIRY ?? '15m' },
+      { expiresIn: ACCESS_EXPIRY_SECONDS },
     );
 
     const tokenId = crypto.randomUUID();
@@ -60,13 +79,8 @@ export default async function authRoutes(fastify: FastifyInstance) {
     );
 
     reply
-      .setCookie('refreshToken', refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        path: '/auth',
-        maxAge: REFRESH_EXPIRY_SECONDS,
-      })
+      .setCookie('accessToken', accessToken, ACCESS_COOKIE_OPTS)
+      .setCookie('refreshToken', refreshToken, REFRESH_COOKIE_OPTS)
       .code(201)
       .send({
         accessToken,
@@ -108,7 +122,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
     const accessToken = fastify.jwt.sign(
       { sub: user.id, email: user.email },
-      { expiresIn: process.env.JWT_ACCESS_EXPIRY ?? '15m' },
+      { expiresIn: ACCESS_EXPIRY_SECONDS },
     );
 
     const tokenId = crypto.randomUUID();
@@ -125,13 +139,8 @@ export default async function authRoutes(fastify: FastifyInstance) {
     );
 
     reply
-      .setCookie('refreshToken', refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        path: '/auth',
-        maxAge: REFRESH_EXPIRY_SECONDS,
-      })
+      .setCookie('accessToken', accessToken, ACCESS_COOKIE_OPTS)
+      .setCookie('refreshToken', refreshToken, REFRESH_COOKIE_OPTS)
       .code(200)
       .send({ accessToken });
   });
@@ -185,7 +194,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     // Issue new pair
     const accessToken = fastify.jwt.sign(
       { sub: user.id, email: user.email },
-      { expiresIn: process.env.JWT_ACCESS_EXPIRY ?? '15m' },
+      { expiresIn: ACCESS_EXPIRY_SECONDS },
     );
 
     const newTokenId = crypto.randomUUID();
@@ -202,18 +211,13 @@ export default async function authRoutes(fastify: FastifyInstance) {
     );
 
     reply
-      .setCookie('refreshToken', refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        path: '/auth',
-        maxAge: REFRESH_EXPIRY_SECONDS,
-      })
+      .setCookie('accessToken', accessToken, ACCESS_COOKIE_OPTS)
+      .setCookie('refreshToken', refreshToken, REFRESH_COOKIE_OPTS)
       .code(200)
       .send({ accessToken });
   });
 
-  fastify.post('/auth/logout', { onRequest: [fastify.authenticate] }, async (request, reply) => {
+  fastify.post('/auth/logout', async (request, reply) => {
     const token = request.cookies.refreshToken;
     if (token) {
       try {
@@ -225,7 +229,8 @@ export default async function authRoutes(fastify: FastifyInstance) {
     }
 
     reply
-      .clearCookie('refreshToken', { path: '/auth' })
+      .clearCookie('accessToken', { path: ACCESS_COOKIE_OPTS.path })
+      .clearCookie('refreshToken', { path: REFRESH_COOKIE_OPTS.path })
       .code(200)
       .send({ status: 'logged_out' });
   });

@@ -15,6 +15,11 @@ describe('POST /auth/register', () => {
     const refreshCookie = cookies.find((c: any) => c.name === 'refreshToken');
     expect(refreshCookie).toBeDefined();
     expect(refreshCookie!.httpOnly).toBe(true);
+
+    const accessCookie = cookies.find((c: any) => c.name === 'accessToken');
+    expect(accessCookie).toBeDefined();
+    expect(accessCookie!.httpOnly).toBe(true);
+    expect(accessCookie!.path).toBe('/');
   });
 
   it('rejects duplicate email with 409', async () => {
@@ -53,6 +58,10 @@ describe('POST /auth/login', () => {
     expect(body.accessToken).toBeTypeOf('string');
     const refreshCookie = res.cookies.find((c: any) => c.name === 'refreshToken');
     expect(refreshCookie).toBeDefined();
+
+    const accessCookie = res.cookies.find((c: any) => c.name === 'accessToken');
+    expect(accessCookie).toBeDefined();
+    expect(accessCookie!.httpOnly).toBe(true);
   });
 
   it('rejects wrong password with 401', async () => {
@@ -89,6 +98,10 @@ describe('POST /auth/refresh', () => {
     expect(newRefreshCookie).toBeDefined();
     // New refresh cookie should differ from old one (rotation)
     expect(newRefreshCookie!.value).not.toBe(refreshCookie!.value);
+
+    const accessCookie = res.cookies.find((c: any) => c.name === 'accessToken');
+    expect(accessCookie).toBeDefined();
+    expect(accessCookie!.httpOnly).toBe(true);
   });
 
   it('rejects invalid refresh token with 401', async () => {
@@ -100,5 +113,61 @@ describe('POST /auth/refresh', () => {
     });
 
     expect(res.statusCode).toBe(401);
+  });
+});
+
+describe('POST /auth/logout', () => {
+  it('clears both cookies without requiring authentication', async () => {
+    const { response: regRes } = await registerUser({ email: 'logout@example.com' });
+    const refreshCookie = regRes.cookies.find((c: any) => c.name === 'refreshToken');
+    const accessCookie = regRes.cookies.find((c: any) => c.name === 'accessToken');
+    const app = await getApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/auth/logout',
+      cookies: {
+        refreshToken: refreshCookie!.value,
+        accessToken: accessCookie!.value,
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body).status).toBe('logged_out');
+
+    // Both cookies should be cleared
+    const clearedAccess = res.cookies.find((c: any) => c.name === 'accessToken');
+    const clearedRefresh = res.cookies.find((c: any) => c.name === 'refreshToken');
+    expect(clearedAccess).toBeDefined();
+    expect(clearedRefresh).toBeDefined();
+  });
+
+  it('succeeds even without any cookies (unauthenticated no-op)', async () => {
+    const app = await getApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/auth/logout',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body).status).toBe('logged_out');
+  });
+});
+
+describe('cookie-only authentication', () => {
+  it('allows access to protected routes using only the accessToken cookie', async () => {
+    const { response: regRes } = await registerUser({ email: 'cookieauth@example.com' });
+    const accessCookie = regRes.cookies.find((c: any) => c.name === 'accessToken');
+    const app = await getApp();
+
+    // Call a protected route with only the cookie (no Authorization header)
+    const res = await app.inject({
+      method: 'GET',
+      url: '/stream',
+      cookies: { accessToken: accessCookie!.value },
+    });
+
+    // Should not be 401 — the cookie should authenticate the request
+    expect(res.statusCode).not.toBe(401);
   });
 });

@@ -1,0 +1,7 @@
+sruth.live {
+    reverse_proxy web:3002
+}
+
+api.sruth.live {
+    reverse_proxy api:3000
+}

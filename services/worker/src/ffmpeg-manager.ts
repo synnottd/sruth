@@ -1,11 +1,10 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createInterface } from 'node:readline';
-import type { OutputTarget } from '@omega-stream/shared';
 import { classifyError, type ErrorClass } from './error-classifier.js';
 import { ProgressParser, type ProgressMetrics } from './progress-parser.js';
 
-const MAX_RETRIES = 5;
-const BACKOFF_BASE_MS = 1000; // 1s, 2s, 4s, 8s, 16s
+const MAX_RETRIES = 8;
+const BACKOFF_BASE_MS = 2000; // ~30s total retry window
 const INGEST_PORT = 1935;
 const INGEST_APP = 'live';
 const INGEST_IP_OVERRIDE = process.env.INGEST_IP_OVERRIDE;
@@ -53,16 +52,36 @@ export class FfmpegManager {
     this.events = events;
   }
 
-  /** Start a new session with all its outputs. */
+  /** Start a new session with all its outputs. Idempotent: diffs outputs if session exists. */
   startSession(
     sessionId: string,
     userId: string,
     streamKey: string,
     ingestIp: string,
-    outputs: OutputTarget[],
+    outputs: Array<{ outputSessionId: string; rtmpUrl: string; streamKey: string }>,
   ): void {
-    if (this.sessions.has(sessionId)) {
-      console.warn('[FFmpeg] Session already exists:', sessionId);
+    const existing = this.sessions.get(sessionId);
+    if (existing) {
+      // Idempotent: diff outputs
+      const currentIds = new Set(existing.outputs.keys());
+      const newIds = new Set(outputs.map((o) => o.outputSessionId));
+
+      // Stop removed outputs
+      for (const id of currentIds) {
+        if (!newIds.has(id)) {
+          const output = existing.outputs.get(id)!;
+          this.killOutput(output);
+          existing.outputs.delete(id);
+          this.events.onStatusChange(sessionId, id, 'stopped', null);
+        }
+      }
+
+      // Add new outputs
+      for (const target of outputs) {
+        if (!currentIds.has(target.outputSessionId)) {
+          this.addOutput(existing, target);
+        }
+      }
       return;
     }
 
@@ -111,7 +130,7 @@ export class FfmpegManager {
   }
 
   /** Add outputs to an existing session. */
-  async addOutputs(sessionId: string, outputs: OutputTarget[]): Promise<void> {
+  async addOutputs(sessionId: string, outputs: Array<{ outputSessionId: string; rtmpUrl: string; streamKey: string }>): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session) {
       console.warn('[FFmpeg] Cannot add outputs — session not found:', sessionId);
@@ -143,32 +162,6 @@ export class FfmpegManager {
     }
   }
 
-  /** Handle ingest IP change — abort all retries, update IP, restart all outputs. */
-  async relocateIngest(sessionId: string, newIngestIp: string): Promise<void> {
-    const session = this.sessions.get(sessionId);
-    if (!session) {
-      console.warn('[FFmpeg] Cannot relocate — session not found:', sessionId);
-      return;
-    }
-
-    console.log('[FFmpeg] Relocating session', sessionId, 'to', newIngestIp);
-
-    // Abort all in-progress retries and kill processes
-    for (const output of session.outputs.values()) {
-      output.abortController.abort();
-      await this.killProcess(output);
-    }
-
-    // Update ingest IP and restart all outputs
-    session.ingestIp = newIngestIp;
-    for (const output of session.outputs.values()) {
-      output.abortController = new AbortController();
-      output.retryCount = 0;
-      output.status = 'starting';
-      this.spawnWithRetry(session, output);
-    }
-  }
-
   /** Gracefully shut down all sessions. */
   async shutdownAll(): Promise<void> {
     const kills: Promise<void>[] = [];
@@ -192,7 +185,7 @@ export class FfmpegManager {
 
   // --- Private ---
 
-  private addOutput(session: Session, target: OutputTarget): void {
+  private addOutput(session: Session, target: { outputSessionId: string; rtmpUrl: string; streamKey: string }): void {
     const output: OutputProcess = {
       outputSessionId: target.outputSessionId,
       rtmpUrl: target.rtmpUrl,

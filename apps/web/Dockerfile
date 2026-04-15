@@ -5,7 +5,7 @@ WORKDIR /app
 
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/web/package.json apps/web/package.json
-RUN pnpm install --frozen-lockfile --filter @omega-stream/web...
+RUN pnpm install --frozen-lockfile --filter @sruth/web...
 
 # Stage 2: Build
 FROM node:22-alpine AS builder
@@ -18,7 +18,7 @@ COPY apps/web apps/web
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN pnpm --filter @omega-stream/web build
+RUN pnpm --filter @sruth/web build
 
 # Stage 3: Production runner
 FROM node:22-alpine AS runner

@@ -1,9 +1,9 @@
 export const config = {
-  sqsQueueUrl: process.env.SQS_QUEUE_URL ?? 'http://localhost:9324/000000000000/omega-stream-worker.fifo',
-  sqsEndpoint: process.env.SQS_ENDPOINT, // e.g. http://localhost:9324 for ElasticMQ
-  sqsWaitTimeSeconds: 20,
-  sqsMaxMessages: 10,
-  sqsVisibilityTimeout: 60,
-  redisUrl: process.env.REDIS_URL ?? 'redis://localhost:6379',
-  localDev: process.env.LOCAL_DEV === 'true' || !process.env.ECS_CONTAINER_METADATA_URI_V4,
+  databaseUrl: process.env.DATABASE_URL ?? 'postgresql://sruth:sruth@localhost:5432/sruth',
+  pollIntervalMs: Number(process.env.POLL_INTERVAL_MS ?? 1000),
+  httpPort: Number(process.env.HTTP_PORT ?? 4000),
+  ingestPort: Number(process.env.INGEST_PORT ?? 1935),
+  ingestApp: process.env.INGEST_APP ?? 'live',
+  ingestIpOverride: process.env.INGEST_IP_OVERRIDE,
+  logLevel: process.env.LOG_LEVEL ?? 'info',
 } as const;

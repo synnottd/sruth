@@ -1,5 +1,7 @@
 import type { FastifyInstance } from 'fastify';
-import { sendCommand } from '../lib/sqs.js';
+import { sendCommand } from '../lib/commands.js';
+
+const WORKER_URL = process.env.WORKER_URL ?? 'http://localhost:4000';
 
 export default async function streamsRoutes(fastify: FastifyInstance) {
   fastify.addHook('onRequest', fastify.authenticate);
@@ -16,19 +18,7 @@ export default async function streamsRoutes(fastify: FastifyInstance) {
       orderBy: { startedAt: 'desc' },
     });
 
-    // Enrich with Redis metrics
-    return Promise.all(
-      sessions.map(async (session) => {
-        try {
-          const metricsRaw = await fastify.redis.get(`stream:${session.id}:bitrate`);
-          const metrics = metricsRaw ? JSON.parse(metricsRaw) : null;
-          return { ...session, metrics };
-        } catch (err) {
-          fastify.log.warn({ sessionId: session.id, err }, 'Failed to fetch Redis metrics');
-          return { ...session, metrics: null };
-        }
-      }),
-    );
+    return sessions;
   });
 
   fastify.post<{ Params: { outputSessionId: string } }>(
@@ -50,12 +40,7 @@ export default async function streamsRoutes(fastify: FastifyInstance) {
         });
       }
 
-      await fastify.prisma.outputSession.update({
-        where: { id: outputSessionId },
-        data: { status: 'STOPPED', endedAt: new Date() },
-      });
-
-      await sendCommand({
+      await sendCommand(fastify.prisma, {
         type: 'stop',
         userId,
         sessionId: outputSession.sessionId,
@@ -65,4 +50,45 @@ export default async function streamsRoutes(fastify: FastifyInstance) {
       return { status: 'stopped' };
     },
   );
+
+  // SSE proxy — pipe worker's SSE stream to the browser with auth
+  fastify.get('/streams/live', async (request, reply) => {
+    const userId = request.user.sub;
+
+    try {
+      const resp = await fetch(`${WORKER_URL}/streams/live/${userId}`);
+      if (!resp.ok || !resp.body) {
+        return reply.code(503).send({ error: 'Worker unavailable' });
+      }
+
+      reply.raw.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      });
+
+      const reader = resp.body.getReader();
+      const pump = async () => {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            reply.raw.write(value);
+          }
+        } catch {
+          // Connection closed
+        }
+        reply.raw.end();
+      };
+
+      request.raw.on('close', () => {
+        reader.cancel().catch(() => {});
+      });
+
+      pump();
+      return reply;
+    } catch {
+      return reply.code(503).send({ error: 'Worker unavailable' });
+    }
+  });
 }

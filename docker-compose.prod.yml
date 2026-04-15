@@ -1,0 +1,110 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER}']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      NODE_ENV: production
+      PORT: '3000'
+      INTERNAL_PORT: '3001'
+      HOST: '0.0.0.0'
+      WORKER_URL: 'http://worker:4000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O-', 'http://localhost:3000/health']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    environment:
+      NEXT_PUBLIC_API_URL: ${CORS_ORIGIN:+https://api.sruth.live}
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O-', 'http://localhost:3002/']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  ingest:
+    build:
+      context: ./services/ingest
+    environment:
+      API_HOST: 'api:3001'
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+      INGEST_IP_OVERRIDE: 'ingest'
+    ports:
+      - '1935:1935'
+      - '9999:9999/udp'
+    healthcheck:
+      test: ['CMD', 'curl', '-sf', 'http://localhost:9997/v3/paths/list']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: services/worker/Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      INGEST_IP_OVERRIDE: 'ingest'
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ingest:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O-', 'http://localhost:4000/health']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:

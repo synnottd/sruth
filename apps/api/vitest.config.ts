@@ -5,8 +5,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     env: {
-      DATABASE_URL: 'postgresql://omega:omega@localhost:5432/omega_stream_test',
-      REDIS_URL: 'redis://localhost:6379',
+      DATABASE_URL: 'postgresql://sruth:sruth@localhost:5432/sruth_test',
       JWT_SECRET: 'test-secret',
       JWT_ACCESS_EXPIRY: '15m',
       JWT_REFRESH_EXPIRY: '7d',

@@ -1,7 +1,6 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import prismaPlugin from './plugins/prisma.js';
-import redisPlugin from './plugins/redis.js';
 import authPlugin from './plugins/auth.js';
 import authRoutes from './routes/auth.js';
 import outputRoutes from './routes/outputs.js';
@@ -55,7 +54,6 @@ export async function buildApp() {
 
   // Plugins
   await app.register(prismaPlugin);
-  await app.register(redisPlugin);
   await app.register(authPlugin);
 
   // Routes
@@ -70,7 +68,7 @@ export async function buildApp() {
   return app;
 }
 
-/** Internal API server — nginx-rtmp callbacks, isolated port */
+/** Internal API server — ingest callbacks, isolated port */
 export async function buildInternalApp() {
   const app = Fastify({ logger: loggerConfig });
 
@@ -78,7 +76,6 @@ export async function buildInternalApp() {
 
   // Shared infrastructure plugins
   await app.register(prismaPlugin);
-  await app.register(redisPlugin);
 
   // Shared secret gate
   app.addHook('onRequest', async (request, reply) => {

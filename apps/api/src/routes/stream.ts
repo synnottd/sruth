@@ -33,9 +33,14 @@ export default async function streamRoutes(fastify: FastifyInstance) {
       });
     }
 
-    // Check if stream is live
-    const active = await fastify.redis.exists(`stream:${user.streamKey}:active`);
-    if (active) {
+    // Check if stream is live via DB
+    const activeSession = await fastify.prisma.streamSession.findFirst({
+      where: {
+        userId,
+        status: { in: ['STARTING', 'LIVE'] },
+      },
+    });
+    if (activeSession) {
       return reply.code(409).send({
         statusCode: 409,
         error: 'STREAM_IS_LIVE',

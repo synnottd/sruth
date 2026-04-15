@@ -1,7 +1,7 @@
 import { describe, it, expect, afterAll, vi } from 'vitest';
 import { getApp, getInternalApp, closeApp, registerUser } from './helper.js';
 
-vi.mock('../src/lib/sqs.js', () => ({
+vi.mock('../src/lib/commands.js', () => ({
   sendCommand: vi.fn(),
 }));
 
@@ -73,10 +73,6 @@ describe('POST /streams/:outputId/stop', () => {
     });
 
     expect(res.statusCode).toBe(200);
-
-    // Verify the output session is stopped
-    const checkRes = await app.inject({ method: 'GET', url: '/streams/active', headers });
-    const check = JSON.parse(checkRes.body);
-    expect(check[0].outputSessions[0].status).toBe('STOPPED');
+    expect(JSON.parse(res.body).status).toBe('stopped');
   });
 });

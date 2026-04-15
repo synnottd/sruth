@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 import type { WorkerCommand } from '@sruth/shared';
 import { CommandConsumer } from './command-consumer.js';
 import { FfmpegManager } from './ffmpeg-manager.js';
@@ -8,9 +9,8 @@ import { WorkerHttpServer } from './http.js';
 import { resolveWorkerId } from './worker-identity.js';
 import { config } from './config.js';
 
-const prisma = new PrismaClient({
-  datasourceUrl: config.databaseUrl,
-});
+const adapter = new PrismaPg(config.databaseUrl);
+const prisma = new PrismaClient({ adapter });
 
 let consumer: CommandConsumer;
 let ffmpeg: FfmpegManager;

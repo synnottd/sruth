@@ -1,4 +1,4 @@
-FROM bluenviron/mediamtx:1.17.1
+FROM bluenviron/mediamtx:1.17.1-ffmpeg
 RUN apk add --no-cache curl
 COPY mediamtx.yml /mediamtx.yml
 COPY callbacks.sh /callbacks.sh

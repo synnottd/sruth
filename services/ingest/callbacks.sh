@@ -31,6 +31,19 @@ case "$ACTION" in
 
     echo "[callbacks] on-publish ACCEPTED (HTTP $HTTP_CODE)"
     ;;
+  on-unpublish)
+    STREAM_KEY=$(echo "$MTX_PATH_ARG" | sed 's|^live/||')
+
+    echo "[callbacks] on-unpublish path=$MTX_PATH_ARG key=$STREAM_KEY"
+
+    HTTP_CODE=$(curl -s -o /dev/stderr -w "%{http_code}" \
+      -X POST \
+      -H "X-Internal-Secret: ${INTERNAL_SECRET}" \
+      -d "app=live&name=${STREAM_KEY}" \
+      "http://${API_HOST}/internal/stream/on-unpublish")
+
+    echo "[callbacks] on-unpublish response (HTTP $HTTP_CODE)"
+    ;;
   *)
     echo "[callbacks] unknown action: $ACTION"
     exit 1

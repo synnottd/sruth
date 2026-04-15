@@ -25,20 +25,12 @@ srtAddress: :9999
 
 # Path defaults — apply to all paths
 pathDefaults:
-  # On publish: authenticate via API callback
-  runOnPublish: /callbacks.sh on-publish "$MTX_PATH"
-  runOnPublishRestart: yes
+  # On ready (publisher connected): authenticate via API callback (one-shot, no restart)
+  runOnReady: /callbacks.sh on-publish "$MTX_PATH"
+  runOnReadyRestart: no
 
-  # On unpublish: log only (worker manages lifecycle)
-  runOnUnpublish: echo "[mediamtx] unpublish path=$MTX_PATH"
-  runOnUnpublishRestart: yes
-
-  # Logging hooks for visibility
-  runOnReady: echo "[mediamtx] ready path=$MTX_PATH source=$MTX_SOURCE_TYPE"
-  runOnReadyRestart: yes
-
-  runOnNotReady: echo "[mediamtx] not-ready path=$MTX_PATH"
-  runOnNotReadyRestart: yes
+  # On not-ready (publisher disconnected): notify API to stop session
+  runOnNotReady: /callbacks.sh on-unpublish "$MTX_PATH"
 
 paths:
   all:

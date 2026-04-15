@@ -83,4 +83,38 @@ export default async function internalStreamRoutes(fastify: FastifyInstance) {
 
     return reply.code(200).send({ status: 'ok' });
   });
+
+  fastify.post<{
+    Body: { app: string; name: string };
+  }>('/internal/stream/on-unpublish', async (request, reply) => {
+    const streamKey = request.body.name;
+
+    const user = await fastify.prisma.user.findFirst({
+      where: { streamKey },
+    });
+    if (!user) {
+      return reply.code(200).send({ status: 'ignored' });
+    }
+
+    // Find active session for this user
+    const session = await fastify.prisma.streamSession.findFirst({
+      where: {
+        userId: user.id,
+        status: { in: ['STARTING', 'LIVE'] },
+      },
+    });
+
+    if (!session) {
+      return reply.code(200).send({ status: 'no-session' });
+    }
+
+    // Send stop command to worker
+    await sendCommand(fastify.prisma, {
+      type: 'stop',
+      userId: user.id,
+      sessionId: session.id,
+    });
+
+    return reply.code(200).send({ status: 'ok' });
+  });
 }

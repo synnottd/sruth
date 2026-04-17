@@ -59,6 +59,31 @@ for i in $(seq 1 30); do
     sleep 2
 done
 
+# Backup database before schema push
+#
+# `prisma db push --accept-data-loss` will happily drop columns/tables if the
+# schema diverges from what's live. Take a pg_dump first so we can recover if
+# a deploy surprises us. Retention keeps the last 7 dumps on disk.
+#
+# This is pre-alpha mitigation only — backups on the same VM as the DB are
+# lost if the VM dies. See issue #56 for the durable backup plan.
+BACKUP_DIR=/opt/sruth/backups
+mkdir -p "$BACKUP_DIR"
+
+# $POSTGRES_USER / $POSTGRES_DB are injected by the Postgres image from .env,
+# so we reference them inside the container rather than sourcing .env here.
+if docker compose -f docker-compose.prod.yml exec -T postgres \
+        sh -c 'pg_isready -U "$POSTGRES_USER"' > /dev/null 2>&1; then
+    BACKUP_FILE="$BACKUP_DIR/pre-deploy-$(date -u +%Y%m%dT%H%M%SZ).sql"
+    echo "Backing up database to $BACKUP_FILE..."
+    docker compose -f docker-compose.prod.yml exec -T postgres \
+        sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > "$BACKUP_FILE"
+    # Keep the 7 most recent dumps.
+    ls -1t "$BACKUP_DIR"/pre-deploy-*.sql 2>/dev/null | tail -n +8 | xargs -r rm --
+else
+    echo "Postgres not ready — skipping pre-deploy backup (first deploy?)"
+fi
+
 # Push schema
 echo "Pushing database schema..."
 docker compose -f docker-compose.prod.yml exec -T api npx prisma db push --config prisma/prisma.config.ts --accept-data-loss

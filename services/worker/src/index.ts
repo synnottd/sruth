@@ -8,6 +8,7 @@ import { LogCapture } from './log-capture.js';
 import { WorkerHttpServer } from './http.js';
 import { resolveWorkerId } from './worker-identity.js';
 import { config } from './config.js';
+import { createStatusHandler, type StatusHandler } from './status-handler.js';
 
 const adapter = new PrismaPg(config.databaseUrl);
 const prisma = new PrismaClient({ adapter });
@@ -17,6 +18,7 @@ let ffmpeg: FfmpegManager;
 let health: HealthReporter;
 let logs: LogCapture;
 let http: WorkerHttpServer;
+let statusHandler: StatusHandler;
 
 async function handleCommand(command: WorkerCommand): Promise<void> {
   console.log('[Worker] Command:', command.type, command.sessionId);
@@ -162,6 +164,7 @@ async function shutdown(signal: string): Promise<void> {
     health.stop();
     logs.stop();
     await ffmpeg.shutdownAll();
+    await statusHandler.flush();
     await prisma.$disconnect();
   } catch (err) {
     console.error('[Worker] Error during shutdown:', err);
@@ -175,36 +178,18 @@ async function main(): Promise<void> {
 
   logs = new LogCapture();
 
-  ffmpeg = new FfmpegManager({
-    onStatusChange: (sessionId, outputSessionId, status, error) => {
-      console.log('[Worker] Status:', sessionId, outputSessionId, status, error ?? '');
-
-      // Update DB status
-      const dbStatus = status === 'live' ? 'LIVE' : status === 'error' ? 'ERROR' : undefined;
-      if (dbStatus) {
-        prisma.outputSession.update({
-          where: { id: outputSessionId },
-          data: {
-            status: dbStatus,
-            lastError: error,
-            ...(status === 'live' ? { reconnectCount: { increment: 0 } } : {}),
-          },
-        }).catch((err) => console.error('[Worker] DB status update failed:', err));
-
-        if (status === 'live') {
-          prisma.streamSession.updateMany({
-            where: { id: sessionId, status: 'STARTING' },
-            data: { status: 'LIVE' },
-          }).catch((err) => console.error('[Worker] DB session status update failed:', err));
-        }
-      }
-
-      // Push to SSE
-      const session = ffmpeg.getSession(sessionId);
+  statusHandler = createStatusHandler({
+    prisma,
+    onSse: (sessionId, outputSessionId, status, error) => {
+      const session = ffmpeg?.getSession(sessionId);
       if (session) {
         http.pushStatus(session.userId, sessionId, outputSessionId, status, error);
       }
     },
+  });
+
+  ffmpeg = new FfmpegManager({
+    onStatusChange: statusHandler.onStatusChange,
     onMetrics: (sessionId, outputSessionId, metrics) => {
       health.recordMetrics(sessionId, outputSessionId, metrics);
 

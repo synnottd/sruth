@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { LogCapture } from '../log-capture.js';
+import { LogCapture, ERROR_EVICTION_DELAY_MS } from '../log-capture.js';
 
 describe('LogCapture', () => {
   let capture: LogCapture;
@@ -90,6 +90,77 @@ describe('LogCapture', () => {
       capture.captureLine('s1', 'out-1', 'msg');
 
       expect(listener).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('scheduleEviction', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('evicts buffer after the configured delay', () => {
+      capture.captureLine('s1', 'out-1', 'line');
+      capture.scheduleEviction('out-1');
+
+      // Just before the deadline — still there.
+      vi.advanceTimersByTime(ERROR_EVICTION_DELAY_MS - 1);
+      expect(capture.getBuffer('out-1')).toEqual(['line']);
+
+      // Past the deadline — gone.
+      vi.advanceTimersByTime(1);
+      expect(capture.getBuffer('out-1')).toEqual([]);
+    });
+
+    it('cancelEviction preserves the buffer', () => {
+      capture.captureLine('s1', 'out-1', 'line');
+      capture.scheduleEviction('out-1');
+      capture.cancelEviction('out-1');
+
+      vi.advanceTimersByTime(ERROR_EVICTION_DELAY_MS * 2);
+      expect(capture.getBuffer('out-1')).toEqual(['line']);
+    });
+
+    it('replaces any existing timer when scheduled again', () => {
+      capture.captureLine('s1', 'out-1', 'line');
+      capture.scheduleEviction('out-1', 1_000);
+      vi.advanceTimersByTime(500);
+
+      // Re-schedule with a longer delay — the earlier timer must not fire.
+      capture.scheduleEviction('out-1', 10_000);
+      vi.advanceTimersByTime(600); // past original 1s deadline
+      expect(capture.getBuffer('out-1')).toEqual(['line']);
+
+      vi.advanceTimersByTime(10_000);
+      expect(capture.getBuffer('out-1')).toEqual([]);
+    });
+
+    it('removeOutput cancels a pending eviction', () => {
+      capture.captureLine('s1', 'out-1', 'line');
+      capture.scheduleEviction('out-1');
+      capture.removeOutput('out-1');
+
+      // Even if we advance time, no stray timer callback should run —
+      // verified implicitly: no errors, buffer stays empty.
+      vi.advanceTimersByTime(ERROR_EVICTION_DELAY_MS * 2);
+      expect(capture.getBuffer('out-1')).toEqual([]);
+    });
+
+    it('stop clears all pending eviction timers', () => {
+      capture.captureLine('s1', 'out-1', 'line 1');
+      capture.captureLine('s1', 'out-2', 'line 2');
+      capture.scheduleEviction('out-1');
+      capture.scheduleEviction('out-2');
+
+      capture.stop();
+
+      // No timer should run against a stopped capture.
+      vi.advanceTimersByTime(ERROR_EVICTION_DELAY_MS * 2);
+      expect(capture.getBuffer('out-1')).toEqual([]);
+      expect(capture.getBuffer('out-2')).toEqual([]);
     });
   });
 });

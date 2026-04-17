@@ -42,6 +42,16 @@ if [ ! -f .env ]; then
     exit 0
 fi
 
+# Refuse to boot with the template's placeholder secrets. Shared defaults on a
+# public image mean anyone can mint JWTs or hit /internal/stream/* — treat this
+# as a hard failure rather than a warning.
+if grep -q CHANGEME .env; then
+    echo "ERROR: /opt/sruth/.env still contains CHANGEME placeholders."
+    echo "Replace every CHANGEME (POSTGRES_PASSWORD, JWT_SECRET, INTERNAL_SECRET, DATABASE_URL password)"
+    echo "with a strong secret before re-running. Try: openssl rand -hex 32"
+    exit 1
+fi
+
 # Launch
 echo "Building and starting services..."
 docker compose -f docker-compose.prod.yml up -d --build
@@ -87,6 +97,19 @@ fi
 # Push schema
 echo "Pushing database schema..."
 docker compose -f docker-compose.prod.yml exec -T api npx prisma db push --config prisma/prisma.config.ts --accept-data-loss
+
+# Enforce one active StreamSession per user at the DB layer. Prisma can't
+# express a partial unique index in its schema (and we don't use migrations),
+# so apply it as raw SQL after `db push`. The `on-publish` handler relies on
+# this to resolve concurrent publishes via a P2002 — without it, two racing
+# publishes can both create LIVE sessions for the same user.
+echo "Ensuring partial unique index on StreamSession(userId) for active sessions..."
+docker compose -f docker-compose.prod.yml exec -T postgres \
+    sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1' <<'SQL'
+CREATE UNIQUE INDEX IF NOT EXISTS "StreamSession_userId_active_key"
+ON "StreamSession"("userId")
+WHERE status IN ('STARTING', 'LIVE');
+SQL
 
 echo ""
 echo "=== Done ==="

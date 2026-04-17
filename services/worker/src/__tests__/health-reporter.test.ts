@@ -134,4 +134,47 @@ describe('HealthReporter', () => {
       expect(mockPrisma.streamSession.update).not.toHaveBeenCalled();
     });
   });
+
+  describe('aggregation', () => {
+    it('computes correct avg/peak across many samples without retaining history', async () => {
+      const session = createFakeSession('s1', [{ outputSessionId: 'out-1', status: 'live' }]);
+      const manager = createFakeManager([session]);
+      reporter = new HealthReporter(manager, mockPrisma);
+
+      // 10 000 samples — a stand-in for a long-running stream. If the reporter
+      // retained each sample the heap footprint would scale with this number;
+      // it doesn't.
+      for (let i = 1; i <= 10_000; i++) {
+        reporter.recordMetrics('s1', 'out-1', { bitrate: i, speed: 1.0, dropFrames: 0 });
+      }
+
+      await reporter.writeSummary('s1');
+
+      expect(mockPrisma.streamSession.update).toHaveBeenCalledWith({
+        where: { id: 's1' },
+        data: { avgBitrate: 5000.5, peakBitrate: 10_000 },
+      });
+    });
+
+    it('combines aggregates across multiple outputs', async () => {
+      const session = createFakeSession('s1', [
+        { outputSessionId: 'out-1', status: 'live' },
+        { outputSessionId: 'out-2', status: 'live' },
+      ]);
+      const manager = createFakeManager([session]);
+      reporter = new HealthReporter(manager, mockPrisma);
+
+      reporter.recordMetrics('s1', 'out-1', { bitrate: 1000, speed: 1.0, dropFrames: 0 });
+      reporter.recordMetrics('s1', 'out-1', { bitrate: 2000, speed: 1.0, dropFrames: 0 });
+      reporter.recordMetrics('s1', 'out-2', { bitrate: 5000, speed: 1.0, dropFrames: 0 });
+
+      await reporter.writeSummary('s1');
+
+      // (1000 + 2000 + 5000) / 3 = 2666.66…, peak across outputs = 5000
+      expect(mockPrisma.streamSession.update).toHaveBeenCalledWith({
+        where: { id: 's1' },
+        data: { avgBitrate: (1000 + 2000 + 5000) / 3, peakBitrate: 5000 },
+      });
+    });
+  });
 });

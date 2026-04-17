@@ -12,6 +12,12 @@ case "$ACTION" in
     # Extract stream key from path (e.g. "live/abc-123" -> "abc-123")
     STREAM_KEY=$(echo "$MTX_PATH_ARG" | sed 's|^live/||')
 
+    # Stream key is streamer-controlled; reject anything that could inject into the form body.
+    if ! echo "$STREAM_KEY" | grep -qE '^[a-zA-Z0-9_-]+$'; then
+      echo "[callbacks] on-publish REJECTED: invalid stream key format"
+      exit 1
+    fi
+
     # Source IP: use override if set (for Docker networking), else empty
     SOURCE_IP="${INGEST_IP_OVERRIDE:-}"
 
@@ -33,6 +39,11 @@ case "$ACTION" in
     ;;
   on-unpublish)
     STREAM_KEY=$(echo "$MTX_PATH_ARG" | sed 's|^live/||')
+
+    if ! echo "$STREAM_KEY" | grep -qE '^[a-zA-Z0-9_-]+$'; then
+      echo "[callbacks] on-unpublish skipped: invalid stream key format"
+      exit 0
+    fi
 
     echo "[callbacks] on-unpublish path=$MTX_PATH_ARG key=$STREAM_KEY"
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter, PassThrough } from 'node:stream';
 import type { ChildProcess } from 'node:child_process';
 import type { ProgressMetrics } from '../progress-parser.js';
@@ -42,7 +42,7 @@ vi.mock('node:child_process', () => ({
   }),
 }));
 
-import { FfmpegManager, type FfmpegManagerEvents, type OutputStatus } from '../ffmpeg-manager.js';
+import { FfmpegManager, redactStreamKey, type FfmpegManagerEvents, type OutputStatus } from '../ffmpeg-manager.js';
 
 const testOutput = {
   outputSessionId: 'out-1',
@@ -337,5 +337,24 @@ describe('FfmpegManager', () => {
       expect(session!.outputs.size).toBe(1);
       expect(session!.outputs.has('out-2')).toBe(true);
     });
+  });
+});
+
+describe('redactStreamKey', () => {
+  // Add new protocols/shapes here as we support them.
+  test.each([
+    { name: 'rtmp with path key', input: 'rtmp://live.twitch.tv/app/SECRETKEY', expected: 'rtmp://live.twitch.tv/app/***' },
+    { name: 'rtmps with path key', input: 'rtmps://live-api-s.facebook.com:443/rtmp/SECRETKEY', expected: 'rtmps://live-api-s.facebook.com:443/rtmp/***' },
+    { name: 'srt with streamid query', input: 'srt://srt.example.com:10000?streamid=SECRETKEY', expected: 'srt://srt.example.com:10000?streamid=***' },
+  ])('redacts $name', ({ input, expected }) => {
+    expect(redactStreamKey(input)).toBe(expected);
+  });
+
+  it('returns [unparseable url] for invalid input', () => {
+    expect(redactStreamKey('not a url')).toBe('[unparseable url]');
+  });
+
+  it('leaves base URLs without a key segment unchanged', () => {
+    expect(redactStreamKey('rtmp://live.twitch.tv/app')).toBe('rtmp://live.twitch.tv/app');
   });
 });

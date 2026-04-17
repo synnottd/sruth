@@ -1,20 +1,19 @@
 import type { PrismaClient } from '@prisma/client';
-import type { FfmpegManager, OutputStatus } from './ffmpeg-manager.js';
+import type { FfmpegManager } from './ffmpeg-manager.js';
 import type { ProgressMetrics } from './progress-parser.js';
 
-interface BitrateSample {
-  value: number;
-  timestamp: number;
-}
-
-interface OutputSamples {
-  bitrate: BitrateSample[];
+interface OutputAggregate {
+  count: number;
+  sum: number;
+  peak: number;
 }
 
 export class HealthReporter {
   private ffmpeg: FfmpegManager;
   private prisma: PrismaClient;
-  private samples: Map<string, OutputSamples> = new Map();
+  // Running aggregates per output — O(1) memory regardless of stream length.
+  // We only ever surface avg and peak, so there is no reason to keep samples.
+  private aggregates: Map<string, OutputAggregate> = new Map();
 
   constructor(ffmpeg: FfmpegManager, prisma: PrismaClient) {
     this.ffmpeg = ffmpeg;
@@ -26,40 +25,43 @@ export class HealthReporter {
   }
 
   stop(): void {
-    this.samples.clear();
+    this.aggregates.clear();
     console.log('[Health] Reporter stopped');
   }
 
   recordMetrics(_sessionId: string, outputSessionId: string, metrics: ProgressMetrics): void {
-    if (metrics.bitrate !== null) {
-      let outputSamples = this.samples.get(outputSessionId);
-      if (!outputSamples) {
-        outputSamples = { bitrate: [] };
-        this.samples.set(outputSessionId, outputSamples);
-      }
-      outputSamples.bitrate.push({ value: metrics.bitrate, timestamp: Date.now() });
+    if (metrics.bitrate === null) return;
+    let agg = this.aggregates.get(outputSessionId);
+    if (!agg) {
+      agg = { count: 0, sum: 0, peak: 0 };
+      this.aggregates.set(outputSessionId, agg);
     }
+    agg.count++;
+    agg.sum += metrics.bitrate;
+    if (metrics.bitrate > agg.peak) agg.peak = metrics.bitrate;
   }
 
   /** Write summary metrics to StreamSession when a session ends. */
   async writeSummary(sessionId: string): Promise<void> {
-    // Collect all bitrate samples across outputs for this session
     const session = this.ffmpeg.getSession(sessionId);
     if (!session) return;
 
-    const allSamples: number[] = [];
+    let totalCount = 0;
+    let totalSum = 0;
+    let peakBitrate = 0;
     for (const output of session.outputs.values()) {
-      const outputSamples = this.samples.get(output.outputSessionId);
-      if (outputSamples) {
-        allSamples.push(...outputSamples.bitrate.map((s) => s.value));
-        this.samples.delete(output.outputSessionId);
+      const agg = this.aggregates.get(output.outputSessionId);
+      if (agg) {
+        totalCount += agg.count;
+        totalSum += agg.sum;
+        if (agg.peak > peakBitrate) peakBitrate = agg.peak;
+        this.aggregates.delete(output.outputSessionId);
       }
     }
 
-    if (allSamples.length === 0) return;
+    if (totalCount === 0) return;
 
-    const avgBitrate = allSamples.reduce((a, b) => a + b, 0) / allSamples.length;
-    const peakBitrate = Math.max(...allSamples);
+    const avgBitrate = totalSum / totalCount;
 
     await this.prisma.streamSession.update({
       where: { id: sessionId },
@@ -67,8 +69,8 @@ export class HealthReporter {
     });
   }
 
-  /** Clean up samples for a specific output. */
+  /** Clean up aggregate for a specific output. */
   clearOutput(outputSessionId: string): void {
-    this.samples.delete(outputSessionId);
+    this.aggregates.delete(outputSessionId);
   }
 }

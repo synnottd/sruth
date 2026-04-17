@@ -9,10 +9,28 @@ const INGEST_PORT = 1935;
 const INGEST_APP = 'live';
 const INGEST_IP_OVERRIDE = process.env.INGEST_IP_OVERRIDE;
 
-/** Redact stream keys from RTMP URLs for safe logging. */
-function redactStreamKey(url: string): string {
-  // Match rtmp://host/app/STREAM_KEY — redact the key portion
-  return url.replace(/(rtmp:\/\/[^/]+\/[^/]+\/)(.+)/, '$1***');
+/**
+ * Redact stream keys from any streaming URL for safe logging.
+ *
+ * Users sometimes paste a full ingest URL (including the key) into the
+ * `rtmpUrl` field — e.g. `rtmp://host/app/KEY` or, for SRT,
+ * `srt://host?streamid=KEY`. This masks either shape before we log it.
+ */
+export function redactStreamKey(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const parts = parsed.pathname.split('/').filter(Boolean);
+    if (parts.length >= 2) {
+      parts[parts.length - 1] = '***';
+      parsed.pathname = '/' + parts.join('/');
+    }
+    for (const k of ['streamid', 'key', 'secret']) {
+      if (parsed.searchParams.has(k)) parsed.searchParams.set(k, '***');
+    }
+    return parsed.toString();
+  } catch {
+    return '[unparseable url]';
+  }
 }
 
 export type OutputStatus = 'starting' | 'live' | 'retrying' | 'error' | 'stopped';

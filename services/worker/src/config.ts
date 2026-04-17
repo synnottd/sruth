@@ -5,5 +5,6 @@ export const config = {
   ingestPort: Number(process.env.INGEST_PORT ?? 1935),
   ingestApp: process.env.INGEST_APP ?? 'live',
   ingestIpOverride: process.env.INGEST_IP_OVERRIDE,
+  internalSecret: process.env.INTERNAL_SECRET,
   logLevel: process.env.LOG_LEVEL ?? 'info',
 } as const;

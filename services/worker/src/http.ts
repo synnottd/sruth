@@ -9,15 +9,22 @@ interface SseConnection {
   userId: string;
 }
 
+export interface WorkerHttpOptions {
+  /** Shared secret required on `/streams/live/:userId`. Omit to disable the check (dev only). */
+  internalSecret?: string;
+}
+
 export class WorkerHttpServer {
   private app: FastifyInstance;
   private connections: Map<string, Set<SseConnection>> = new Map(); // userId -> connections
   private ffmpeg: FfmpegManager;
   private logs: LogCapture;
+  private internalSecret?: string;
 
-  constructor(ffmpeg: FfmpegManager, logs: LogCapture) {
+  constructor(ffmpeg: FfmpegManager, logs: LogCapture, opts: WorkerHttpOptions = {}) {
     this.ffmpeg = ffmpeg;
     this.logs = logs;
+    this.internalSecret = opts.internalSecret;
 
     this.app = Fastify({ logger: false });
 
@@ -26,6 +33,18 @@ export class WorkerHttpServer {
     this.app.get<{ Params: { userId: string } }>(
       '/streams/live/:userId',
       async (request, reply) => {
+        // The SSE stream leaks per-user metrics + FFmpeg stderr (which can
+        // contain upstream RTMP URLs). The worker listens on the Docker
+        // internal network, but network boundaries have a way of slipping —
+        // gate the endpoint on the same shared secret the API uses for
+        // /internal/*. The API proxy forwards the header on behalf of the
+        // authenticated browser session.
+        if (this.internalSecret) {
+          if (request.headers['x-internal-secret'] !== this.internalSecret) {
+            return reply.code(403).send({ error: 'Forbidden' });
+          }
+        }
+
         const { userId } = request.params;
 
         reply.raw.writeHead(200, {

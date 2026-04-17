@@ -226,6 +226,13 @@ async function shutdown(signal: string): Promise<void> {
 async function main(): Promise<void> {
   const workerId = resolveWorkerId();
 
+  // In production the SSE endpoint must be gated — an unset secret means any
+  // container on the Docker network could scrape another user's live logs.
+  if (process.env.NODE_ENV === 'production' && !config.internalSecret) {
+    console.error('[Worker] INTERNAL_SECRET is required when NODE_ENV=production');
+    process.exit(1);
+  }
+
   logs = new LogCapture();
 
   statusHandler = createStatusHandler({
@@ -259,7 +266,7 @@ async function main(): Promise<void> {
   });
 
   health = new HealthReporter(ffmpeg, prisma);
-  http = new WorkerHttpServer(ffmpeg, logs);
+  http = new WorkerHttpServer(ffmpeg, logs, { internalSecret: config.internalSecret });
   consumer = new CommandConsumer(prisma, config.pollIntervalMs);
 
   // Start components

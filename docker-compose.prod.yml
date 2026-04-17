@@ -90,6 +90,7 @@ services:
       dockerfile: services/worker/Dockerfile
     environment:
       DATABASE_URL: ${DATABASE_URL}
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
       INGEST_IP_OVERRIDE: 'ingest'
       NODE_ENV: production
     depends_on:

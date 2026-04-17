@@ -55,8 +55,16 @@ export default async function streamsRoutes(fastify: FastifyInstance) {
   fastify.get('/streams/live', async (request, reply) => {
     const userId = request.user.sub;
 
+    const internalSecret = process.env.INTERNAL_SECRET;
+    if (!internalSecret) {
+      request.log.warn('INTERNAL_SECRET not configured — refusing to proxy SSE');
+      return reply.code(500).send({ error: 'SSE proxy misconfigured' });
+    }
+
     try {
-      const resp = await fetch(`${WORKER_URL}/streams/live/${userId}`);
+      const resp = await fetch(`${WORKER_URL}/streams/live/${userId}`, {
+        headers: { 'x-internal-secret': internalSecret },
+      });
       if (!resp.ok || !resp.body) {
         return reply.code(503).send({ error: 'Worker unavailable' });
       }

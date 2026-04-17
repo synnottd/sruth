@@ -107,7 +107,7 @@ export default async function streamsRoutes(fastify: FastifyInstance) {
         }
       };
 
-      pump();
+      pump().catch((err) => request.log.error({ err }, 'SSE pump error'));
       return reply;
     } catch {
       clearTimeout(timeout);

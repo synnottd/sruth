@@ -56,7 +56,6 @@ export function createStatusHandler(deps: StatusHandlerDeps): StatusHandler {
           data: {
             status: dbStatus,
             lastError: update.error,
-            ...(update.status === 'live' ? { reconnectCount: { increment: 0 } } : {}),
           },
         });
         if (update.status === 'live') {

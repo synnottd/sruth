@@ -2,19 +2,19 @@
 
 export type WorkerCommandType = 'start' | 'stop';
 
-interface BaseCommand {
+type BaseCommand = {
   type: WorkerCommandType;
   userId: string;
   sessionId: string;
-}
+};
 
-export interface StartCommand extends BaseCommand {
+export type StartCommand = BaseCommand & {
   type: 'start';
-}
+};
 
-export interface StopCommand extends BaseCommand {
+export type StopCommand = BaseCommand & {
   type: 'stop';
   outputSessionId?: string; // omit to stop all outputs for the session
-}
+};
 
 export type WorkerCommand = StartCommand | StopCommand;

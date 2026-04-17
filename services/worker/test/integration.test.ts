@@ -94,6 +94,7 @@ describe('Worker Integration Tests', { timeout: 120_000 }, () => {
         onStatusChange: (_sid, oid, status) => { statusChanges.push({ outputSessionId: oid, status }); },
         onMetrics: (_sid, _oid, metrics) => { metricsReceived.push(metrics); },
         onStderrLine: () => {},
+        onReconnect: () => {},
       };
 
       const manager = new FfmpegManager(events);
@@ -129,6 +130,7 @@ describe('Worker Integration Tests', { timeout: 120_000 }, () => {
         onStatusChange: (_sid, oid, status) => { statusChanges.push({ outputSessionId: oid, status }); },
         onMetrics: () => {},
         onStderrLine: () => {},
+        onReconnect: () => {},
       };
 
       const manager = new FfmpegManager(events);
@@ -163,6 +165,7 @@ describe('Worker Integration Tests', { timeout: 120_000 }, () => {
         onStatusChange: (_sid, oid, status) => { statusChanges.push({ outputSessionId: oid, status }); },
         onMetrics: () => {},
         onStderrLine: () => {},
+        onReconnect: () => {},
       };
 
       const manager = new FfmpegManager(events);

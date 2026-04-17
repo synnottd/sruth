@@ -273,6 +273,16 @@ async function main(): Promise<void> {
         http.pushLog(session.userId, sessionId, outputSessionId, line);
       }
     },
+    onReconnect: (_sessionId, outputSessionId) => {
+      prisma.outputSession
+        .update({
+          where: { id: outputSessionId },
+          data: { reconnectCount: { increment: 1 } },
+        })
+        .catch((err) => {
+          console.error('[Worker] reconnect count update failed:', outputSessionId, err);
+        });
+    },
   });
 
   health = new HealthReporter(ffmpeg, prisma);

@@ -60,6 +60,8 @@ export interface FfmpegManagerEvents {
   onStatusChange: (sessionId: string, outputSessionId: string, status: OutputStatus, error: string | null) => void;
   onMetrics: (sessionId: string, outputSessionId: string, metrics: ProgressMetrics) => void;
   onStderrLine: (sessionId: string, outputSessionId: string, line: string) => void;
+  /** Fires on a retrying→live transition (i.e. a successful reconnect). */
+  onReconnect: (sessionId: string, outputSessionId: string) => void;
 }
 
 export class FfmpegManager {
@@ -312,8 +314,12 @@ export class FfmpegManager {
       output.lastMetrics = metrics;
       // First metrics received means we're live
       if (output.status === 'starting' || output.status === 'retrying') {
+        const wasReconnect = output.status === 'retrying';
         output.status = 'live';
         output.retryCount = 0; // Reset on successful connection
+        if (wasReconnect) {
+          this.events.onReconnect(session.sessionId, output.outputSessionId);
+        }
         this.events.onStatusChange(session.sessionId, output.outputSessionId, 'live', null);
       }
       this.events.onMetrics(session.sessionId, output.outputSessionId, metrics);

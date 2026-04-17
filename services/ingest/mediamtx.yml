@@ -25,7 +25,11 @@ srtAddress: :9999
 
 # Path defaults — apply to all paths
 pathDefaults:
-  # On ready (publisher connected): authenticate via API callback (one-shot, no restart)
+  # On ready (publisher connected): authenticate via API callback (one-shot, no restart).
+  # "$MTX_PATH" must stay double-quoted: MediaMTX runs these commands via `sh -c`,
+  # so the quotes prevent word-splitting if the path ever contains whitespace.
+  # (Command substitution is not a concern — MediaMTX only permits URL-safe chars
+  # in paths, so $() and backticks can't appear.) Same applies to runOnNotReady below.
   runOnReady: /callbacks.sh on-publish "$MTX_PATH"
   runOnReadyRestart: no
 

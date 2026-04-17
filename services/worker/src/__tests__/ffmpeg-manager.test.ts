@@ -79,6 +79,7 @@ describe('FfmpegManager', () => {
       onStderrLine: (sessionId, outputSessionId, line) => {
         stderrLines.push({ sessionId, outputSessionId, line });
       },
+      onReconnect: () => {},
     };
 
     manager = new FfmpegManager(events);

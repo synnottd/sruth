@@ -17,6 +17,13 @@ COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 COPY apps/web apps/web
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 
+# NEXT_PUBLIC_* vars are inlined into the client bundle at build time, so they
+# MUST be set before `next build` — passing them at runtime via docker-compose
+# has no effect. Callers should pass `--build-arg NEXT_PUBLIC_API_URL=...` (or
+# set it in `build.args` in docker-compose).
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm --filter @sruth/web build
 

@@ -58,8 +58,10 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
-    environment:
-      NEXT_PUBLIC_API_URL: ${CORS_ORIGIN:+https://api.sruth.live}
+      args:
+        # NEXT_PUBLIC_* vars are baked into the client bundle at build time.
+        # Setting them under `environment:` below would have no effect.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     healthcheck:
       test: ['CMD', 'wget', '-q', '-O-', 'http://localhost:3002/']
       interval: 5s

@@ -38,14 +38,19 @@ ENV NODE_ENV=production
 # Install FFmpeg
 RUN apk add --no-cache ffmpeg
 
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 --ingroup nodejs nodejs
+
 # Copy built output and dependencies
-COPY --from=builder /app/services/worker/dist ./services/worker/dist
-COPY --from=builder /app/services/worker/package.json ./services/worker/package.json
-COPY --from=builder /app/services/worker/node_modules ./services/worker/node_modules
-COPY --from=builder /app/services/worker/prisma ./services/worker/prisma
-COPY --from=builder /app/packages/shared ./packages/shared
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
+COPY --from=builder --chown=nodejs:nodejs /app/services/worker/dist ./services/worker/dist
+COPY --from=builder --chown=nodejs:nodejs /app/services/worker/package.json ./services/worker/package.json
+COPY --from=builder --chown=nodejs:nodejs /app/services/worker/node_modules ./services/worker/node_modules
+COPY --from=builder --chown=nodejs:nodejs /app/services/worker/prisma ./services/worker/prisma
+COPY --from=builder --chown=nodejs:nodejs /app/packages/shared ./packages/shared
+COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nodejs:nodejs /app/package.json ./package.json
+
+USER nodejs
 
 EXPOSE 4000
 

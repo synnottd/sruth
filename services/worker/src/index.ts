@@ -246,7 +246,17 @@ async function main(): Promise<void> {
   });
 
   ffmpeg = new FfmpegManager({
-    onStatusChange: statusHandler.onStatusChange,
+    onStatusChange: (sessionId, outputSessionId, status, error) => {
+      // Evict log buffers after a grace period when an output enters terminal
+      // error without an explicit stop, so orphaned buffers don't accumulate.
+      // Resurrection (retrying/live) cancels the pending eviction.
+      if (status === 'error') {
+        logs.scheduleEviction(outputSessionId);
+      } else {
+        logs.cancelEviction(outputSessionId);
+      }
+      statusHandler.onStatusChange(sessionId, outputSessionId, status, error);
+    },
     onMetrics: (sessionId, outputSessionId, metrics) => {
       health.recordMetrics(sessionId, outputSessionId, metrics);
 

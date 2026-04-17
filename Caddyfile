@@ -1,7 +1,16 @@
+(security_headers) {
+    header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    header X-Frame-Options DENY
+    header X-Content-Type-Options nosniff
+    header Referrer-Policy strict-origin-when-cross-origin
+}
+
 sruth.live {
+    import security_headers
     reverse_proxy web:3002
 }
 
 api.sruth.live {
+    import security_headers
     reverse_proxy api:3000
 }

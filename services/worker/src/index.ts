@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
-import type { WorkerCommand } from '@sruth/shared';
+import type { StopCommand, WorkerCommand } from '@sruth/shared';
 import { CommandConsumer } from './command-consumer.js';
 import { FfmpegManager } from './ffmpeg-manager.js';
 import { HealthReporter } from './health-reporter.js';
@@ -20,78 +20,128 @@ let logs: LogCapture;
 let http: WorkerHttpServer;
 let statusHandler: StatusHandler;
 
+async function handleStart(sessionId: string): Promise<void> {
+  const session = await prisma.streamSession.findUnique({
+    where: { id: sessionId },
+    include: {
+      user: true,
+      outputSessions: {
+        include: { output: true },
+        where: { status: { not: 'STOPPED' } },
+      },
+    },
+  });
+
+  if (!session || session.status === 'STOPPED') {
+    console.log('[Worker] Session not found or stopped:', sessionId);
+    return;
+  }
+
+  const outputs = session.outputSessions.map((os) => ({
+    outputSessionId: os.id,
+    rtmpUrl: os.output.rtmpUrl,
+    streamKey: os.output.streamKey,
+  }));
+
+  ffmpeg.startSession(
+    session.id,
+    session.userId,
+    session.user.streamKey,
+    session.ingestIp ?? 'ingest',
+    outputs,
+  );
+}
+
+async function handleStop(command: StopCommand): Promise<void> {
+  if (command.outputSessionId) {
+    await ffmpeg.stopSession(command.sessionId, command.outputSessionId);
+    logs.removeOutput(command.outputSessionId);
+    health.clearOutput(command.outputSessionId);
+
+    await prisma.outputSession.update({
+      where: { id: command.outputSessionId },
+      data: { status: 'STOPPED', endedAt: new Date() },
+    });
+    return;
+  }
+
+  // Full session stop
+  const session = ffmpeg.getSession(command.sessionId);
+  const outputIds = session ? Array.from(session.outputs.keys()) : [];
+
+  await health.writeSummary(command.sessionId);
+  await ffmpeg.stopSession(command.sessionId);
+
+  for (const id of outputIds) {
+    logs.removeOutput(id);
+    health.clearOutput(id);
+  }
+
+  await prisma.streamSession.update({
+    where: { id: command.sessionId },
+    data: { status: 'STOPPED', endedAt: new Date() },
+  });
+  await prisma.outputSession.updateMany({
+    where: { sessionId: command.sessionId, status: { not: 'STOPPED' } },
+    data: { status: 'STOPPED', endedAt: new Date() },
+  });
+}
+
+async function markSessionError(sessionId: string): Promise<void> {
+  try {
+    await prisma.streamSession.updateMany({
+      where: { id: sessionId, status: 'STARTING' },
+      data: { status: 'ERROR' },
+    });
+  } catch (err) {
+    console.error('[Worker] Failed to mark session ERROR:', sessionId, err);
+  }
+}
+
+async function forceStopped(command: StopCommand): Promise<void> {
+  const now = new Date();
+  try {
+    if (command.outputSessionId) {
+      await prisma.outputSession.update({
+        where: { id: command.outputSessionId },
+        data: { status: 'STOPPED', endedAt: now },
+      });
+      return;
+    }
+    await prisma.$transaction([
+      prisma.streamSession.updateMany({
+        where: { id: command.sessionId, status: { not: 'STOPPED' } },
+        data: { status: 'STOPPED', endedAt: now },
+      }),
+      prisma.outputSession.updateMany({
+        where: { sessionId: command.sessionId, status: { not: 'STOPPED' } },
+        data: { status: 'STOPPED', endedAt: now },
+      }),
+    ]);
+  } catch (err) {
+    console.error('[Worker] Failed to force STOPPED state:', command.sessionId, err);
+  }
+}
+
 async function handleCommand(command: WorkerCommand): Promise<void> {
   console.log('[Worker] Command:', command.type, command.sessionId);
 
   switch (command.type) {
     case 'start': {
-      // Query DB for full session + outputs
-      const session = await prisma.streamSession.findUnique({
-        where: { id: command.sessionId },
-        include: {
-          user: true,
-          outputSessions: {
-            include: { output: true },
-            where: { status: { not: 'STOPPED' } },
-          },
-        },
-      });
-
-      if (!session || session.status === 'STOPPED') {
-        console.log('[Worker] Session not found or stopped:', command.sessionId);
-        return;
+      try {
+        await handleStart(command.sessionId);
+      } catch (err) {
+        console.error('[Worker] start failed; marking session ERROR:', command.sessionId, err);
+        await markSessionError(command.sessionId);
       }
-
-      const outputs = session.outputSessions.map((os) => ({
-        outputSessionId: os.id,
-        rtmpUrl: os.output.rtmpUrl,
-        streamKey: os.output.streamKey,
-      }));
-
-      ffmpeg.startSession(
-        session.id,
-        session.userId,
-        session.user.streamKey,
-        session.ingestIp ?? 'ingest',
-        outputs,
-      );
       break;
     }
     case 'stop': {
-      if (command.outputSessionId) {
-        await ffmpeg.stopSession(command.sessionId, command.outputSessionId);
-        logs.removeOutput(command.outputSessionId);
-        health.clearOutput(command.outputSessionId);
-
-        // Update output session status in DB
-        await prisma.outputSession.update({
-          where: { id: command.outputSessionId },
-          data: { status: 'STOPPED', endedAt: new Date() },
-        });
-      } else {
-        // Full session stop
-        const session = ffmpeg.getSession(command.sessionId);
-        const outputIds = session ? Array.from(session.outputs.keys()) : [];
-
-        // Write summary metrics before stopping
-        await health.writeSummary(command.sessionId);
-
-        await ffmpeg.stopSession(command.sessionId);
-
-        for (const id of outputIds) {
-          logs.removeOutput(id);
-          health.clearOutput(id);
-        }
-
-        // Update DB
-        await prisma.streamSession.update({
-          where: { id: command.sessionId },
-          data: { status: 'STOPPED', endedAt: new Date() },
-        });
-        await prisma.outputSession.updateMany({
-          where: { sessionId: command.sessionId, status: { not: 'STOPPED' } },
-          data: { status: 'STOPPED', endedAt: new Date() },
-        });
+      try {
+        await handleStop(command);
+      } catch (err) {
+        console.error('[Worker] stop failed; forcing STOPPED state:', command.sessionId, err);
+        await forceStopped(command);
       }
       break;
     }

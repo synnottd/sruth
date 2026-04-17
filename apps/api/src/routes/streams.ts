@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { sendCommand } from '../lib/commands.js';
 
 const WORKER_URL = process.env.WORKER_URL ?? 'http://localhost:4000';
+const WORKER_CONNECT_TIMEOUT_MS = 5_000;
 
 export default async function streamsRoutes(fastify: FastifyInstance) {
   fastify.addHook('onRequest', fastify.authenticate);
@@ -61,11 +62,26 @@ export default async function streamsRoutes(fastify: FastifyInstance) {
       return reply.code(500).send({ error: 'SSE proxy misconfigured' });
     }
 
+    // Single AbortController drives both the connect-timeout and the
+    // client-disconnect forwarding. Without this, a hung worker (TCP accept
+    // but no HTTP response) would leave this handler blocked on `fetch`
+    // forever, pinning the browser socket.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), WORKER_CONNECT_TIMEOUT_MS);
+    const onClientClose = () => controller.abort();
+    request.raw.once('close', onClientClose);
+
     try {
       const resp = await fetch(`${WORKER_URL}/streams/live/${userId}`, {
         headers: { 'x-internal-secret': internalSecret },
+        signal: controller.signal,
       });
+      // Connect succeeded — the timeout is no longer relevant; the
+      // client-close handler continues to forward into the stream.
+      clearTimeout(timeout);
+
       if (!resp.ok || !resp.body) {
+        request.raw.removeListener('close', onClientClose);
         return reply.code(503).send({ error: 'Worker unavailable' });
       }
 
@@ -84,18 +100,18 @@ export default async function streamsRoutes(fastify: FastifyInstance) {
             reply.raw.write(value);
           }
         } catch {
-          // Connection closed
+          // Stream closed (client disconnect, upstream abort, or error).
+        } finally {
+          reply.raw.end();
+          request.raw.removeListener('close', onClientClose);
         }
-        reply.raw.end();
       };
-
-      request.raw.on('close', () => {
-        reader.cancel().catch(() => {});
-      });
 
       pump();
       return reply;
     } catch {
+      clearTimeout(timeout);
+      request.raw.removeListener('close', onClientClose);
       return reply.code(503).send({ error: 'Worker unavailable' });
     }
   });

@@ -89,7 +89,7 @@ export function Dashboard() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Dashboard</h1>
-      <HeroBanner activeStream={activeStream} />
+      <HeroBanner activeStream={activeStream ?? null} />
       {outputs && outputs.length > 0 && (
         <div className="grid gap-4 sm:grid-cols-2">
           {outputs.map((output) => (

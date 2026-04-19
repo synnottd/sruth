@@ -37,9 +37,13 @@ declare module 'fastify' {
   }
 }
 
+// Access tokens carry { sub, email }; refresh tokens carry { sub, tokenId }.
+// Both are signed via the same fastify.jwt instance, so `payload` must accept
+// either shape. `user` is what's decoded on request.jwtVerify() — which only
+// runs on access-cookie routes, so it stays as the access-token shape.
 declare module '@fastify/jwt' {
   interface FastifyJWT {
-    payload: { sub: string; email: string };
+    payload: { sub: string; email?: string; tokenId?: string };
     user: { sub: string; email: string };
   }
 }

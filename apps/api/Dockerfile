@@ -18,7 +18,7 @@ COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
 COPY apps/api apps/api
 COPY packages/shared packages/shared
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.base.json ./
 
 # Generate Prisma client
 RUN cd apps/api && npx prisma generate --config prisma/prisma.config.ts

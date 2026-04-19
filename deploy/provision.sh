@@ -12,6 +12,22 @@ else
     echo "Docker already installed"
 fi
 
+# Enable IPv6 + ip6tables NAT so published ports preserve real client v6
+# source addresses. Without this, v6 traffic falls back to docker-proxy and
+# arrives at the container as the bridge gateway IP — any IP allowlist breaks.
+DAEMON_JSON=/etc/docker/daemon.json
+DESIRED_DAEMON_JSON='{
+  "ipv6": true,
+  "ip6tables": true,
+  "userland-proxy": false
+}'
+if [ ! -f "$DAEMON_JSON" ] || [ "$(cat "$DAEMON_JSON")" != "$DESIRED_DAEMON_JSON" ]; then
+    echo "Updating $DAEMON_JSON for IPv6 support (will restart Docker)..."
+    mkdir -p /etc/docker
+    printf '%s\n' "$DESIRED_DAEMON_JSON" > "$DAEMON_JSON"
+    systemctl restart docker
+fi
+
 # Firewall
 echo "Configuring firewall..."
 ufw allow 22/tcp

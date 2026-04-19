@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sruth — Multi-destination live streaming relay</title>
+  <meta name="description" content="Sruth is a live video relay that takes one incoming stream and forwards it to Twitch, YouTube, Facebook, Kick and custom RTMP or SRT destinations at the same time. Built mobile-first for IRL and multi-platform streamers.">
+  <meta name="robots" content="index,follow">
+  <meta property="og:title" content="Sruth — Multi-destination live streaming relay">
+  <meta property="og:description" content="Stream once, broadcast everywhere. SRT-native, mobile-first, honest usage-based pricing.">
+  <meta property="og:url" content="https://sruth.live/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Sruth">
+  <link rel="canonical" href="https://sruth.live/">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Helvetica, Arial, sans-serif;
+      font-size: 17px;
+      line-height: 1.6;
+      color: #1a1a1a;
+      background: #fafaf8;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    .wrap {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 64px 24px 96px;
+    }
+    header { margin-bottom: 48px; }
+    .mark {
+      font-weight: 700;
+      font-size: 20px;
+      letter-spacing: -0.01em;
+      color: #0a3d2c;
+    }
+    .mark-sub {
+      font-size: 13px;
+      color: #6b6b6b;
+      font-weight: 400;
+      margin-left: 8px;
+    }
+    h1 {
+      font-size: 36px;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      margin: 0 0 20px;
+      font-weight: 700;
+    }
+    h2 {
+      font-size: 20px;
+      margin: 48px 0 12px;
+      letter-spacing: -0.01em;
+      font-weight: 600;
+    }
+    p.lede {
+      font-size: 19px;
+      color: #333;
+      margin: 0 0 24px;
+    }
+    p { margin: 0 0 16px; }
+    ul.features {
+      padding: 0;
+      list-style: none;
+      margin: 16px 0 28px;
+    }
+    ul.features li {
+      padding: 16px 0;
+      border-top: 1px solid #e5e3de;
+    }
+    ul.features li:last-child { border-bottom: 1px solid #e5e3de; }
+    ul.features li strong {
+      display: block;
+      margin-bottom: 6px;
+      color: #0a3d2c;
+      font-weight: 600;
+    }
+    a { color: #0a3d2c; text-decoration: underline; text-underline-offset: 2px; }
+    a:hover { text-decoration: none; }
+    .contact {
+      background: #fff;
+      border: 1px solid #e5e3de;
+      border-radius: 8px;
+      padding: 22px 24px;
+      margin: 32px 0;
+    }
+    .contact strong {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+    footer {
+      margin-top: 64px;
+      padding-top: 24px;
+      border-top: 1px solid #e5e3de;
+      font-size: 14px;
+      color: #6b6b6b;
+    }
+    footer a { color: #6b6b6b; }
+    @media (max-width: 480px) {
+      .wrap { padding: 40px 20px 64px; }
+      h1 { font-size: 28px; }
+      p.lede { font-size: 17px; }
+      body { font-size: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <span class="mark">Sruth</span><span class="mark-sub">/sruh-th/ &middot; Irish for stream</span>
+    </header>
+
+    <h1>Stream once. Broadcast everywhere.</h1>
+
+    <p class="lede">
+      Sruth is a multi-destination live video relay. You send one stream to Sruth;
+      Sruth forwards it to Twitch, YouTube, Facebook, Kick and any custom RTMP or
+      SRT destination at the same time.
+    </p>
+
+    <p>
+      It is built for mobile and IRL streamers first. A phone on a cellular uplink
+      physically cannot sustain three high-bitrate outputs at once &mdash; Sruth does
+      the fan-out so your device doesn't have to.
+    </p>
+
+    <h2>What's different</h2>
+    <ul class="features">
+      <li>
+        <strong>SRT-native from day one.</strong>
+        Modern, packet-loss-tolerant ingest for mobile and cellular connections.
+        RTMP is supported too, but SRT is a first-class citizen, not an afterthought.
+      </li>
+      <li>
+        <strong>Honest usage-based pricing.</strong>
+        Pay for the output-hours you actually use. No hidden bitrate caps, no
+        "premium platform" surcharges, no fine print that makes your real bill
+        something other than the one on the pricing page.
+      </li>
+      <li>
+        <strong>Mobile and IRL as the primary customer.</strong>
+        The product is designed around the constraints of cellular uplinks, not
+        retrofitted to them. Desktop streamers are welcome; they are not the wedge.
+      </li>
+    </ul>
+
+    <h2>Where we are</h2>
+    <p>
+      Sruth is in private alpha. If you are a mobile, IRL or multi-platform streamer
+      who has run into bitrate caps, dropped destinations, or the
+      "which platform do I sacrifice?" problem, I would like to talk to you.
+    </p>
+
+    <div class="contact">
+      <strong>Get in touch</strong>
+      Email <a href="mailto:dave@sruth.live?subject=Sruth%20alpha%20interest">dave@sruth.live</a>
+      &mdash; every message is read and replied to personally.
+    </div>
+
+    <h2>Timeline</h2>
+    <p>
+      Alpha invitations go out during summer 2026 to a hand-picked group of streamers,
+      free of charge. A paid beta with transcoding and HEVC support follows later in
+      2026. Alpha users keep free passthrough for life.
+    </p>
+
+    <h2>Who is building this</h2>
+    <p>
+      Sruth is being built by Dave Synnott, an independent software engineer based
+      in Ireland. Questions, introductions, or if you just want to know whether Sruth
+      will solve a specific problem you are having &mdash; write to
+      <a href="mailto:dave@sruth.live">dave@sruth.live</a>.
+    </p>
+
+    <footer>
+      &copy; 2026 Sruth. Operated by Dave Synnott, Ireland.
+      Contact: <a href="mailto:dave@sruth.live">dave@sruth.live</a>
+    </footer>
+  </div>
+</body>
+</html>

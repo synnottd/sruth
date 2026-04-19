@@ -32,24 +32,11 @@ cd /opt/sruth
 
 # .env setup
 if [ ! -f .env ]; then
-    echo "Creating .env from template..."
-    cp deploy/.env.template .env
+    echo "Generating .env with random secrets..."
+    deploy/gen-env.sh
     echo ""
-    echo "IMPORTANT: Edit /opt/sruth/.env with real secrets before continuing."
-    echo "  nano /opt/sruth/.env"
-    echo ""
-    echo "Then re-run this script."
+    echo "Save the printed secrets to your password manager, then re-run this script."
     exit 0
-fi
-
-# Refuse to boot with the template's placeholder secrets. Shared defaults on a
-# public image mean anyone can mint JWTs or hit /internal/stream/* — treat this
-# as a hard failure rather than a warning.
-if grep -q CHANGEME .env; then
-    echo "ERROR: /opt/sruth/.env still contains CHANGEME placeholders."
-    echo "Replace every CHANGEME (POSTGRES_PASSWORD, JWT_SECRET, INTERNAL_SECRET, DATABASE_URL password)"
-    echo "with a strong secret before re-running. Try: openssl rand -hex 32"
-    exit 1
 fi
 
 # Launch

@@ -6,6 +6,7 @@ services:
       - '443:443'
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./apps/landing:/srv/landing:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
@@ -115,3 +116,17 @@ volumes:
   postgres_data:
   caddy_data:
   caddy_config:
+
+# Enable IPv6 on the project network so Caddy sees real client v6 source
+# addresses. Without this, IPv6 traffic to published ports goes through
+# docker-proxy and arrives looking like it came from the bridge gateway,
+# which breaks any IP-based allowlist. Requires "ipv6" + "ip6tables" in
+# /etc/docker/daemon.json (set by deploy/provision.sh).
+networks:
+  default:
+    enable_ipv6: true
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+        - subnet: fd00:dead:beef::/64

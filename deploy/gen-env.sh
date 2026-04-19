@@ -27,6 +27,9 @@ DATABASE_URL=postgresql://sruth:${POSTGRES_PASSWORD}@postgres:5432/sruth
 JWT_SECRET=${JWT_SECRET}
 INTERNAL_SECRET=${INTERNAL_SECRET}
 CORS_ORIGIN=https://sruth.live
+# Parent domain for auth cookies so both sruth.live (middleware) and
+# api.sruth.live (JWT verify) receive them.
+COOKIE_DOMAIN=sruth.live
 # Inlined into the web client bundle at build time — must be set before
 # \`docker compose build\`. If you change this you must rebuild the web image.
 NEXT_PUBLIC_API_URL=https://api.sruth.live

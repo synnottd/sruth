@@ -245,9 +245,11 @@ export default async function authRoutes(fastify: FastifyInstance) {
       }
     }
 
+    // Browsers key cookies on (name, domain, path) — the clear directive has
+    // to match the original scope or the cookie stays put.
     reply
-      .clearCookie('accessToken', { path: ACCESS_COOKIE_OPTS.path })
-      .clearCookie('refreshToken', { path: REFRESH_COOKIE_OPTS.path })
+      .clearCookie('accessToken', { path: ACCESS_COOKIE_OPTS.path, domain: COOKIE_DOMAIN })
+      .clearCookie('refreshToken', { path: REFRESH_COOKIE_OPTS.path, domain: COOKIE_DOMAIN })
       .code(200)
       .send({ status: 'logged_out' });
   });

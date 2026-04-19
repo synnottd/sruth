@@ -33,7 +33,7 @@ cd /opt/sruth
 # .env setup
 if [ ! -f .env ]; then
     echo "Generating .env with random secrets..."
-    bash deploy/gen-env.sh
+    deploy/gen-env.sh
     echo ""
     echo "Save the printed secrets to your password manager, then re-run this script."
     exit 0

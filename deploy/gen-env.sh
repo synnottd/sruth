@@ -13,8 +13,7 @@ if [ -f "$ENV_FILE" ]; then
   exit 1
 fi
 
-# Alnum-only so the password embeds into DATABASE_URL without percent-encoding.
-POSTGRES_PASSWORD=$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 48)
+POSTGRES_PASSWORD=$(openssl rand -hex 24)
 JWT_SECRET=$(openssl rand -hex 32)
 INTERNAL_SECRET=$(openssl rand -hex 32)
 
@@ -28,6 +27,8 @@ DATABASE_URL=postgresql://sruth:${POSTGRES_PASSWORD}@postgres:5432/sruth
 JWT_SECRET=${JWT_SECRET}
 INTERNAL_SECRET=${INTERNAL_SECRET}
 CORS_ORIGIN=https://sruth.live
+# Inlined into the web client bundle at build time — must be set before
+# \`docker compose build\`. If you change this you must rebuild the web image.
 NEXT_PUBLIC_API_URL=https://api.sruth.live
 EOF
 

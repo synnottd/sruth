@@ -6,7 +6,6 @@ import { FfmpegManager } from './ffmpeg-manager.js';
 import { HealthReporter } from './health-reporter.js';
 import { LogCapture } from './log-capture.js';
 import { WorkerHttpServer } from './http.js';
-import { resolveWorkerId } from './worker-identity.js';
 import { config } from './config.js';
 import { createStatusHandler, type StatusHandler } from './status-handler.js';
 
@@ -224,8 +223,6 @@ async function shutdown(signal: string): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const workerId = resolveWorkerId();
-
   // In production the SSE endpoint must be gated — an unset secret means any
   // container on the Docker network could scrape another user's live logs.
   if (process.env.NODE_ENV === 'production' && !config.internalSecret) {

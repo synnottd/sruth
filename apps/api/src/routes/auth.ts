@@ -9,12 +9,20 @@ const REFRESH_EXPIRY_SECONDS = 7 * 24 * 60 * 60; // 7 days
 
 const IS_PROD = process.env.NODE_ENV === 'production';
 
+// Set to the parent domain (e.g. `sruth.live`) so cookies set by the API on
+// api.sruth.live are also sent to sruth.live — the Next.js middleware reads
+// the accessToken from the incoming request to gate /dashboard. Without this,
+// the cookie is host-locked to api.sruth.live and the web app sees no token.
+// Unset in dev so cookies stay host-scoped to localhost.
+const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
+
 const ACCESS_COOKIE_OPTS = {
   httpOnly: true,
   secure: IS_PROD,
   sameSite: 'strict' as const,
   path: '/',
   maxAge: ACCESS_EXPIRY_SECONDS,
+  domain: COOKIE_DOMAIN,
 };
 
 const REFRESH_COOKIE_OPTS = {
@@ -23,6 +31,7 @@ const REFRESH_COOKIE_OPTS = {
   sameSite: 'strict' as const,
   path: '/auth',
   maxAge: REFRESH_EXPIRY_SECONDS,
+  domain: COOKIE_DOMAIN,
 };
 
 export default async function authRoutes(fastify: FastifyInstance) {

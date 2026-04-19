@@ -48,7 +48,9 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ['CMD', 'wget', '-q', '-O-', 'http://localhost:3000/health']
+      # Use 127.0.0.1 (not localhost) — busybox wget resolves localhost to ::1
+      # first and gets connection refused because the server binds IPv4 only.
+      test: ['CMD', 'wget', '-q', '-O-', 'http://127.0.0.1:3000/health']
       interval: 5s
       timeout: 3s
       retries: 10
@@ -63,7 +65,7 @@ services:
         # Setting them under `environment:` below would have no effect.
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     healthcheck:
-      test: ['CMD', 'wget', '-q', '-O-', 'http://localhost:3002/']
+      test: ['CMD', 'wget', '-q', '-O-', 'http://127.0.0.1:3002/']
       interval: 5s
       timeout: 3s
       retries: 10
@@ -80,7 +82,7 @@ services:
       - '1935:1935'
       - '9999:9999/udp'
     healthcheck:
-      test: ['CMD', 'curl', '-sf', 'http://localhost:9997/v3/paths/list']
+      test: ['CMD', 'curl', '-sf', 'http://127.0.0.1:9997/v3/paths/list']
       interval: 5s
       timeout: 3s
       retries: 10
@@ -101,7 +103,7 @@ services:
       ingest:
         condition: service_healthy
     healthcheck:
-      test: ['CMD', 'wget', '-q', '-O-', 'http://localhost:4000/health']
+      test: ['CMD', 'wget', '-q', '-O-', 'http://127.0.0.1:4000/health']
       interval: 5s
       timeout: 3s
       retries: 10

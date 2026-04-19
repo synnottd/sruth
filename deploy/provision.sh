@@ -46,7 +46,7 @@ docker compose -f docker-compose.prod.yml up -d --build
 # Wait for API to be healthy
 echo "Waiting for API to be healthy..."
 for i in $(seq 1 30); do
-    if docker compose -f docker-compose.prod.yml exec -T api wget -q -O- http://localhost:3000/health > /dev/null 2>&1; then
+    if docker compose -f docker-compose.prod.yml exec -T api wget -q -O- http://127.0.0.1:3000/health > /dev/null 2>&1; then
         echo "API is healthy"
         break
     fi
@@ -83,7 +83,7 @@ fi
 
 # Push schema
 echo "Pushing database schema..."
-docker compose -f docker-compose.prod.yml exec -T api npx prisma db push --config prisma/prisma.config.ts --accept-data-loss
+docker compose -f docker-compose.prod.yml exec -T -w /app/apps/api api npx prisma db push --config prisma/prisma.config.ts --accept-data-loss
 
 # Enforce one active StreamSession per user at the DB layer. Prisma can't
 # express a partial unique index in its schema (and we don't use migrations),

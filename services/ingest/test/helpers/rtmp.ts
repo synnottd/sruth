@@ -50,16 +50,16 @@ export function startPushStream(key: string): { stop: () => void; done: Promise<
 
 /**
  * Check whether a stream is currently live on the ingest server.
- * Uses the nginx-rtmp stat endpoint — no ffmpeg required.
+ * Uses the MediaMTX API to check path status.
  */
 export async function probeStream(key: string, timeoutSeconds = 5): Promise<boolean> {
   const deadline = Date.now() + timeoutSeconds * 1000
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(`http://${INGEST_HOST}:8080/stat`)
+      const res = await fetch(`http://${INGEST_HOST}:9997/v3/paths/get/live/${key}`)
       if (res.ok) {
-        const xml = await res.text()
-        if (xml.includes(`<name>${key}</name>`)) return true
+        const data = await res.json() as any
+        if (data.ready) return true
       }
     } catch (err: unknown) {
       const cause = (err as any)?.cause?.code

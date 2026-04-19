@@ -1,0 +1,40 @@
+###############################################
+# MediaMTX configuration for Sruth ingest
+###############################################
+
+# API for health checks
+api: yes
+apiAddress: :9997
+
+# Logging
+logLevel: info
+logDestinations: [stdout]
+
+# Disable protocols we don't use
+rtsp: no
+webrtc: no
+hls: no
+srt: yes
+rtmp: yes
+
+# RTMP server
+rtmpAddress: :1935
+
+# SRT server
+srtAddress: :9999
+
+# Path defaults — apply to all paths
+pathDefaults:
+  # On ready (publisher connected): authenticate via API callback (one-shot, no restart).
+  # "$MTX_PATH" must stay double-quoted: MediaMTX runs these commands via `sh -c`,
+  # so the quotes prevent word-splitting if the path ever contains whitespace.
+  # (Command substitution is not a concern — MediaMTX only permits URL-safe chars
+  # in paths, so $() and backticks can't appear.) Same applies to runOnNotReady below.
+  runOnReady: /callbacks.sh on-publish "$MTX_PATH"
+  runOnReadyRestart: no
+
+  # On not-ready (publisher disconnected): notify API to stop session
+  runOnNotReady: /callbacks.sh on-unpublish "$MTX_PATH"
+
+paths:
+  all:

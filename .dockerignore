@@ -1,0 +1,7 @@
+node_modules
+.git
+legacy-aws
+*.md
+.env
+.env.*
+!.env.example

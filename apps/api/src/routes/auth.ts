@@ -71,12 +71,13 @@ export default async function authRoutes(fastify: FastifyInstance) {
       { expiresIn: process.env.JWT_REFRESH_EXPIRY ?? '7d' },
     );
 
-    await fastify.redis.set(
-      `refresh:${user.id}:${tokenId}`,
-      '1',
-      'EX',
-      REFRESH_EXPIRY_SECONDS,
-    );
+    await fastify.prisma.refreshToken.create({
+      data: {
+        userId: user.id,
+        tokenId,
+        expiresAt: new Date(Date.now() + REFRESH_EXPIRY_SECONDS * 1000),
+      },
+    });
 
     reply
       .setCookie('accessToken', accessToken, ACCESS_COOKIE_OPTS)
@@ -131,12 +132,13 @@ export default async function authRoutes(fastify: FastifyInstance) {
       { expiresIn: process.env.JWT_REFRESH_EXPIRY ?? '7d' },
     );
 
-    await fastify.redis.set(
-      `refresh:${user.id}:${tokenId}`,
-      '1',
-      'EX',
-      REFRESH_EXPIRY_SECONDS,
-    );
+    await fastify.prisma.refreshToken.create({
+      data: {
+        userId: user.id,
+        tokenId,
+        expiresAt: new Date(Date.now() + REFRESH_EXPIRY_SECONDS * 1000),
+      },
+    });
 
     reply
       .setCookie('accessToken', accessToken, ACCESS_COOKIE_OPTS)
@@ -166,10 +168,11 @@ export default async function authRoutes(fastify: FastifyInstance) {
       });
     }
 
-    // Check token exists in Redis (not revoked)
-    const redisKey = `refresh:${payload.sub}:${payload.tokenId}`;
-    const exists = await fastify.redis.exists(redisKey);
-    if (!exists) {
+    // Check token exists in DB (not revoked)
+    const existing = await fastify.prisma.refreshToken.findUnique({
+      where: { tokenId: payload.tokenId },
+    });
+    if (!existing || existing.expiresAt < new Date()) {
       return reply.code(401).send({
         statusCode: 401,
         error: 'REVOKED_REFRESH_TOKEN',
@@ -178,7 +181,9 @@ export default async function authRoutes(fastify: FastifyInstance) {
     }
 
     // Revoke old token
-    await fastify.redis.del(redisKey);
+    await fastify.prisma.refreshToken.delete({
+      where: { tokenId: payload.tokenId },
+    });
 
     const user = await fastify.prisma.user.findUnique({
       where: { id: payload.sub },
@@ -203,12 +208,13 @@ export default async function authRoutes(fastify: FastifyInstance) {
       { expiresIn: process.env.JWT_REFRESH_EXPIRY ?? '7d' },
     );
 
-    await fastify.redis.set(
-      `refresh:${user.id}:${newTokenId}`,
-      '1',
-      'EX',
-      REFRESH_EXPIRY_SECONDS,
-    );
+    await fastify.prisma.refreshToken.create({
+      data: {
+        userId: user.id,
+        tokenId: newTokenId,
+        expiresAt: new Date(Date.now() + REFRESH_EXPIRY_SECONDS * 1000),
+      },
+    });
 
     reply
       .setCookie('accessToken', accessToken, ACCESS_COOKIE_OPTS)
@@ -222,7 +228,9 @@ export default async function authRoutes(fastify: FastifyInstance) {
     if (token) {
       try {
         const payload = fastify.jwt.verify<{ sub: string; tokenId: string }>(token);
-        await fastify.redis.del(`refresh:${payload.sub}:${payload.tokenId}`);
+        await fastify.prisma.refreshToken.delete({
+          where: { tokenId: payload.tokenId },
+        }).catch(() => {});
       } catch {
         // Token already invalid — clear cookie anyway
       }

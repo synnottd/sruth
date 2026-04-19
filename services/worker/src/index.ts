@@ -1,65 +1,196 @@
-import type { WorkerCommand } from '@omega-stream/shared';
-import { SqsConsumer } from './sqs-consumer.js';
-import { MessageRouter } from './message-router.js';
+import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import type { StopCommand, WorkerCommand } from '@sruth/shared';
+import { CommandConsumer } from './command-consumer.js';
 import { FfmpegManager } from './ffmpeg-manager.js';
-import { HealthReporter, createCloudWatchPublisher } from './health-reporter.js';
-import { LogCapture, createCloudWatchLogsPublisher } from './log-capture.js';
-import { resolveWorkerId } from './worker-identity.js';
-import { shutdownRedis } from './redis.js';
+import { HealthReporter } from './health-reporter.js';
+import { LogCapture } from './log-capture.js';
+import { WorkerHttpServer } from './http.js';
+import { config } from './config.js';
+import { createStatusHandler, type StatusHandler } from './status-handler.js';
 
-const consumer = new SqsConsumer();
-let router: MessageRouter;
+const adapter = new PrismaPg(config.databaseUrl);
+const prisma = new PrismaClient({ adapter });
+
+let consumer: CommandConsumer;
 let ffmpeg: FfmpegManager;
 let health: HealthReporter;
 let logs: LogCapture;
+let http: WorkerHttpServer;
+let statusHandler: StatusHandler;
+
+async function handleStart(sessionId: string): Promise<void> {
+  const session = await prisma.streamSession.findUnique({
+    where: { id: sessionId },
+    include: {
+      user: true,
+      outputSessions: {
+        include: { output: true },
+        where: { status: { not: 'STOPPED' } },
+      },
+    },
+  });
+
+  if (!session || session.status === 'STOPPED') {
+    console.log('[Worker] Session not found or stopped:', sessionId);
+    return;
+  }
+
+  const outputs = session.outputSessions.map((os) => ({
+    outputSessionId: os.id,
+    rtmpUrl: os.output.rtmpUrl,
+    streamKey: os.output.streamKey,
+  }));
+
+  ffmpeg.startSession(
+    session.id,
+    session.userId,
+    session.user.streamKey,
+    session.ingestIp ?? 'ingest',
+    outputs,
+  );
+}
+
+async function handleStop(command: StopCommand): Promise<void> {
+  if (command.outputSessionId) {
+    await ffmpeg.stopSession(command.sessionId, command.outputSessionId);
+    logs.removeOutput(command.outputSessionId);
+    health.clearOutput(command.outputSessionId);
+
+    await prisma.outputSession.update({
+      where: { id: command.outputSessionId },
+      data: { status: 'STOPPED', endedAt: new Date() },
+    });
+    return;
+  }
+
+  // Full session stop
+  const session = ffmpeg.getSession(command.sessionId);
+  const outputIds = session ? Array.from(session.outputs.keys()) : [];
+
+  await health.writeSummary(command.sessionId);
+  await ffmpeg.stopSession(command.sessionId);
+
+  for (const id of outputIds) {
+    logs.removeOutput(id);
+    health.clearOutput(id);
+  }
+
+  await prisma.streamSession.update({
+    where: { id: command.sessionId },
+    data: { status: 'STOPPED', endedAt: new Date() },
+  });
+  await prisma.outputSession.updateMany({
+    where: { sessionId: command.sessionId, status: { not: 'STOPPED' } },
+    data: { status: 'STOPPED', endedAt: new Date() },
+  });
+}
+
+async function markSessionError(sessionId: string): Promise<void> {
+  try {
+    await prisma.streamSession.updateMany({
+      where: { id: sessionId, status: 'STARTING' },
+      data: { status: 'ERROR' },
+    });
+  } catch (err) {
+    console.error('[Worker] Failed to mark session ERROR:', sessionId, err);
+  }
+}
+
+async function forceStopped(command: StopCommand): Promise<void> {
+  const now = new Date();
+  try {
+    if (command.outputSessionId) {
+      await prisma.outputSession.update({
+        where: { id: command.outputSessionId },
+        data: { status: 'STOPPED', endedAt: now },
+      });
+      return;
+    }
+    await prisma.$transaction([
+      prisma.streamSession.updateMany({
+        where: { id: command.sessionId, status: { not: 'STOPPED' } },
+        data: { status: 'STOPPED', endedAt: now },
+      }),
+      prisma.outputSession.updateMany({
+        where: { sessionId: command.sessionId, status: { not: 'STOPPED' } },
+        data: { status: 'STOPPED', endedAt: now },
+      }),
+    ]);
+  } catch (err) {
+    console.error('[Worker] Failed to force STOPPED state:', command.sessionId, err);
+  }
+}
 
 async function handleCommand(command: WorkerCommand): Promise<void> {
   console.log('[Worker] Command:', command.type, command.sessionId);
 
   switch (command.type) {
     case 'start': {
-      await router.registerSession(command.sessionId);
-      ffmpeg.startSession(
-        command.sessionId,
-        command.userId,
-        command.streamKey,
-        command.ingestIp,
-        command.outputs,
-      );
-      break;
-    }
-    case 'stop': {
-      if (command.outputSessionId) {
-        await ffmpeg.stopSession(command.sessionId, command.outputSessionId);
-        await logs.removeOutput(command.outputSessionId);
-      } else {
-        // Full session stop — collect output IDs before stopping (stopSession removes the session)
-        const session = ffmpeg.getSession(command.sessionId);
-        const outputIds = session ? Array.from(session.outputs.keys()) : [];
-        await ffmpeg.stopSession(command.sessionId);
-        for (const id of outputIds) {
-          await logs.removeOutput(id);
-        }
-        await router.unregisterSession(command.sessionId);
+      try {
+        await handleStart(command.sessionId);
+      } catch (err) {
+        console.error('[Worker] start failed; marking session ERROR:', command.sessionId, err);
+        await markSessionError(command.sessionId);
       }
       break;
     }
-    case 'update': {
-      await ffmpeg.addOutputs(command.sessionId, command.outputs);
-      break;
-    }
-    case 'ingest_relocated': {
-      await ffmpeg.relocateIngest(command.sessionId, command.newIngestIp);
+    case 'stop': {
+      try {
+        await handleStop(command);
+      } catch (err) {
+        console.error('[Worker] stop failed; forcing STOPPED state:', command.sessionId, err);
+        await forceStopped(command);
+      }
       break;
     }
   }
 }
 
-/** SQS entry point — routes commands to the correct worker before handling. */
-async function onSqsMessage(command: WorkerCommand): Promise<void> {
-  const shouldHandle = await router.routeCommand(command);
-  if (!shouldHandle) return;
-  await handleCommand(command);
+/** Resume any LIVE/STARTING sessions on startup (crash recovery). */
+async function recoverSessions(): Promise<void> {
+  const activeSessions = await prisma.streamSession.findMany({
+    where: { status: { in: ['STARTING', 'LIVE'] } },
+    include: {
+      user: true,
+      outputSessions: {
+        include: { output: true },
+        where: { status: { not: 'STOPPED' } },
+      },
+    },
+  });
+
+  if (activeSessions.length === 0) {
+    console.log('[Worker] No sessions to recover');
+    return;
+  }
+
+  console.log('[Worker] Recovering', activeSessions.length, 'active session(s)');
+
+  for (const session of activeSessions) {
+    const outputs = session.outputSessions.map((os) => ({
+      outputSessionId: os.id,
+      rtmpUrl: os.output.rtmpUrl,
+      streamKey: os.output.streamKey,
+    }));
+
+    if (outputs.length === 0) {
+      // No outputs to resume — mark as stopped
+      await prisma.streamSession.update({
+        where: { id: session.id },
+        data: { status: 'STOPPED', endedAt: new Date() },
+      });
+      continue;
+    }
+
+    ffmpeg.startSession(
+      session.id,
+      session.userId,
+      session.user.streamKey,
+      session.ingestIp ?? 'ingest',
+      outputs,
+    );
+  }
 }
 
 let shuttingDown = false;
@@ -70,7 +201,6 @@ async function shutdown(signal: string): Promise<void> {
 
   console.log(`[Worker] Received ${signal}, shutting down...`);
 
-  // Hard timeout — force exit if graceful shutdown takes too long
   const hardTimeout = setTimeout(() => {
     console.error('[Worker] Shutdown timed out after 30s, forcing exit');
     process.exit(1);
@@ -78,21 +208,13 @@ async function shutdown(signal: string): Promise<void> {
   hardTimeout.unref();
 
   try {
-    // 1. Stop accepting new messages
     await consumer.stop();
-
-    // 2. Stop health reporting (no more Redis/CW flushes)
+    await http.stop();
     health.stop();
-    await logs.stop();
-
-    // 3. Kill all FFmpeg processes
+    logs.stop();
     await ffmpeg.shutdownAll();
-
-    // 4. Stop router (heartbeat, pub/sub)
-    await router.stop();
-
-    // 5. Close Redis connections
-    await shutdownRedis();
+    await statusHandler.flush();
+    await prisma.$disconnect();
   } catch (err) {
     console.error('[Worker] Error during shutdown:', err);
   }
@@ -101,44 +223,82 @@ async function shutdown(signal: string): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const workerId = await resolveWorkerId();
+  // In production the SSE endpoint must be gated — an unset secret means any
+  // container on the Docker network could scrape another user's live logs.
+  if (process.env.NODE_ENV === 'production' && !config.internalSecret) {
+    console.error('[Worker] INTERNAL_SECRET is required when NODE_ENV=production');
+    process.exit(1);
+  }
 
-  // Initialize components
-  router = new MessageRouter(workerId);
+  logs = new LogCapture();
 
-  logs = new LogCapture(createCloudWatchLogsPublisher());
-
-  ffmpeg = new FfmpegManager({
-    onStatusChange: (sessionId, outputSessionId, status, error) => {
-      console.log('[Worker] Status:', sessionId, outputSessionId, status, error ?? '');
-      if (status === 'error') {
-        health.reportError(sessionId, outputSessionId);
-      } else {
-        health.clearError(outputSessionId);
+  statusHandler = createStatusHandler({
+    prisma,
+    onSse: (sessionId, outputSessionId, status, error) => {
+      const session = ffmpeg?.getSession(sessionId);
+      if (session) {
+        http.pushStatus(session.userId, sessionId, outputSessionId, status, error);
       }
-    },
-    onMetrics: (sessionId, outputSessionId, metrics) => {
-      health.recordMetrics(sessionId, outputSessionId, metrics);
-    },
-    onStderrLine: (sessionId, outputSessionId, line) => {
-      logs.captureLine(sessionId, outputSessionId, line).catch((err) =>
-        console.error('[Worker] Log capture error:', err),
-      );
     },
   });
 
-  health = new HealthReporter(ffmpeg, router, createCloudWatchPublisher());
+  ffmpeg = new FfmpegManager({
+    onStatusChange: (sessionId, outputSessionId, status, error) => {
+      // Evict log buffers after a grace period when an output enters terminal
+      // error without an explicit stop, so orphaned buffers don't accumulate.
+      // Resurrection (retrying/live) cancels the pending eviction.
+      if (status === 'error') {
+        logs.scheduleEviction(outputSessionId);
+      } else {
+        logs.cancelEviction(outputSessionId);
+      }
+      statusHandler.onStatusChange(sessionId, outputSessionId, status, error);
+    },
+    onMetrics: (sessionId, outputSessionId, metrics) => {
+      health.recordMetrics(sessionId, outputSessionId, metrics);
+
+      const session = ffmpeg.getSession(sessionId);
+      if (session) {
+        http.pushMetrics(session.userId, sessionId, outputSessionId, metrics);
+      }
+    },
+    onStderrLine: (sessionId, outputSessionId, line) => {
+      logs.captureLine(sessionId, outputSessionId, line);
+
+      const session = ffmpeg.getSession(sessionId);
+      if (session) {
+        http.pushLog(session.userId, sessionId, outputSessionId, line);
+      }
+    },
+    onReconnect: (_sessionId, outputSessionId) => {
+      prisma.outputSession
+        .update({
+          where: { id: outputSessionId },
+          data: { reconnectCount: { increment: 1 } },
+        })
+        .catch((err) => {
+          console.error('[Worker] reconnect count update failed:', outputSessionId, err);
+        });
+    },
+  });
+
+  health = new HealthReporter(ffmpeg, prisma);
+  http = new WorkerHttpServer(ffmpeg, logs, { internalSecret: config.internalSecret });
+  consumer = new CommandConsumer(prisma, config.pollIntervalMs);
 
   // Start components
-  await router.start(handleCommand);
   health.start();
   logs.start();
+  await http.start(config.httpPort);
+
+  // Recover active sessions before starting consumer
+  await recoverSessions();
 
   process.on('SIGTERM', () => { shutdown('SIGTERM').catch(() => process.exit(1)); });
   process.on('SIGINT', () => { shutdown('SIGINT').catch(() => process.exit(1)); });
 
-  console.log('[Worker] Ready, starting SQS consumer...');
-  await consumer.start(onSqsMessage);
+  console.log('[Worker] Ready, starting command consumer...');
+  await consumer.start(handleCommand);
 }
 
 main().catch((err) => {

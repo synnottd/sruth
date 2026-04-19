@@ -1,195 +1,91 @@
-import { getRedis } from './redis.js';
-import { config } from './config.js';
-
-const REDIS_LOG_MAX_LINES = 200;
-const REDIS_LOG_TTL = 300; // 5 minutes
-const CW_FLUSH_INTERVAL = 5_000; // 5s
-const CW_FLUSH_LINES = 50;
-const CW_LOG_GROUP = '/omega-stream/worker/ffmpeg';
-
-// --- CloudWatch Logs abstraction ---
-
-export interface CloudWatchLogsPublisher {
-  putLogEvents(
-    logGroup: string,
-    logStream: string,
-    events: Array<{ timestamp: number; message: string }>,
-  ): Promise<void>;
-}
-
-export class AwsCloudWatchLogsPublisher implements CloudWatchLogsPublisher {
-  private client: import('@aws-sdk/client-cloudwatch-logs').CloudWatchLogsClient | null = null;
-  private sequenceTokens: Map<string, string | undefined> = new Map();
-
-  private async getClient(): Promise<import('@aws-sdk/client-cloudwatch-logs').CloudWatchLogsClient> {
-    if (!this.client) {
-      const { CloudWatchLogsClient } = await import('@aws-sdk/client-cloudwatch-logs');
-      this.client = new CloudWatchLogsClient({});
-    }
-    return this.client;
-  }
-
-  async putLogEvents(
-    logGroup: string,
-    logStream: string,
-    events: Array<{ timestamp: number; message: string }>,
-  ): Promise<void> {
-    const { PutLogEventsCommand, CreateLogStreamCommand } = await import(
-      '@aws-sdk/client-cloudwatch-logs'
-    );
-    const client = await this.getClient();
-    const key = `${logGroup}:${logStream}`;
-
-    try {
-      const resp = await client.send(
-        new PutLogEventsCommand({
-          logGroupName: logGroup,
-          logStreamName: logStream,
-          logEvents: events,
-          sequenceToken: this.sequenceTokens.get(key),
-        }),
-      );
-      this.sequenceTokens.set(key, resp.nextSequenceToken);
-    } catch (err: unknown) {
-      // If the log stream doesn't exist, create it and retry
-      if (err && typeof err === 'object' && 'name' in err && err.name === 'ResourceNotFoundException') {
-        try {
-          await client.send(
-            new CreateLogStreamCommand({
-              logGroupName: logGroup,
-              logStreamName: logStream,
-            }),
-          );
-        } catch {
-          // Stream may already exist from a race
-        }
-        const resp = await client.send(
-          new PutLogEventsCommand({
-            logGroupName: logGroup,
-            logStreamName: logStream,
-            logEvents: events,
-          }),
-        );
-        this.sequenceTokens.set(key, resp.nextSequenceToken);
-      } else {
-        throw err;
-      }
-    }
-  }
-}
-
-export class NoopCloudWatchLogsPublisher implements CloudWatchLogsPublisher {
-  async putLogEvents(): Promise<void> {
-    // Silently drop in local dev
-  }
-}
-
-export function createCloudWatchLogsPublisher(): CloudWatchLogsPublisher {
-  if (config.localDev) {
-    return new NoopCloudWatchLogsPublisher();
-  }
-  return new AwsCloudWatchLogsPublisher();
-}
-
-// --- Log buffer per output ---
-
-interface OutputLogBuffer {
-  sessionId: string;
-  outputSessionId: string;
-  lines: Array<{ timestamp: number; message: string }>;
-}
+const LOG_MAX_LINES = 200;
 
 /**
- * Captures FFmpeg stderr and dual-writes to Redis (real-time tail) and CloudWatch Logs (persistent).
+ * Default delay before evicting the stderr buffer of an output that has
+ * entered a terminal 'error' state without a follow-up stop command.
+ * Short-term memory hygiene; long-term persistence tracked in #58.
  */
-export class LogCapture {
-  private buffers: Map<string, OutputLogBuffer> = new Map(); // keyed by outputSessionId
-  private cwPublisher: CloudWatchLogsPublisher;
-  private flushTimer: ReturnType<typeof setInterval> | null = null;
+export const ERROR_EVICTION_DELAY_MS = 10 * 60 * 1000; // 10 minutes
 
-  constructor(cwPublisher: CloudWatchLogsPublisher) {
-    this.cwPublisher = cwPublisher;
-  }
+export type LogListener = (sessionId: string, outputSessionId: string, line: string) => void;
+
+export class LogCapture {
+  private buffers: Map<string, string[]> = new Map(); // keyed by outputSessionId
+  private listeners: Set<LogListener> = new Set();
+  private evictionTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
   start(): void {
-    this.flushTimer = setInterval(() => {
-      this.flushAllToCloudWatch().catch((err) =>
-        console.error('[LogCapture] CloudWatch flush error:', err),
-      );
-    }, CW_FLUSH_INTERVAL);
     console.log('[LogCapture] Started');
   }
 
-  async stop(): Promise<void> {
-    if (this.flushTimer) {
-      clearInterval(this.flushTimer);
-      this.flushTimer = null;
+  stop(): void {
+    for (const timer of this.evictionTimers.values()) {
+      clearTimeout(timer);
     }
-    // Final flush — await to avoid clearing buffers before flush completes
-    await this.flushAllToCloudWatch().catch((err) =>
-      console.error('[LogCapture] Final flush error:', err),
-    );
+    this.evictionTimers.clear();
     this.buffers.clear();
+    this.listeners.clear();
     console.log('[LogCapture] Stopped');
   }
 
-  /** Called for each FFmpeg stderr line. */
-  async captureLine(sessionId: string, outputSessionId: string, line: string): Promise<void> {
-    // Write to Redis immediately (don't let failure prevent CloudWatch buffering)
-    await this.writeToRedis(sessionId, outputSessionId, line).catch((err) =>
-      console.error('[LogCapture] Redis write error:', err),
-    );
+  addListener(listener: LogListener): void {
+    this.listeners.add(listener);
+  }
 
-    // Buffer for CloudWatch
+  removeListener(listener: LogListener): void {
+    this.listeners.delete(listener);
+  }
+
+  /** Called for each FFmpeg stderr line. */
+  captureLine(sessionId: string, outputSessionId: string, line: string): void {
+    // Buffer for SSE snapshot
     let buf = this.buffers.get(outputSessionId);
     if (!buf) {
-      buf = { sessionId, outputSessionId, lines: [] };
+      buf = [];
       this.buffers.set(outputSessionId, buf);
     }
-    buf.lines.push({ timestamp: Date.now(), message: line });
+    buf.push(line);
+    if (buf.length > LOG_MAX_LINES) {
+      buf.shift();
+    }
 
-    // Flush to CloudWatch if buffer is full
-    if (buf.lines.length >= CW_FLUSH_LINES) {
-      await this.flushBufferToCloudWatch(buf);
+    // Notify listeners (SSE)
+    for (const listener of this.listeners) {
+      listener(sessionId, outputSessionId, line);
     }
   }
 
-  /** Remove buffers for a stopped output. */
-  async removeOutput(outputSessionId: string): Promise<void> {
-    const buf = this.buffers.get(outputSessionId);
-    if (buf && buf.lines.length > 0) {
-      await this.flushBufferToCloudWatch(buf);
+  /** Get buffered lines for SSE snapshot on connect. */
+  getBuffer(outputSessionId: string): string[] {
+    return this.buffers.get(outputSessionId) ?? [];
+  }
+
+  /**
+   * Schedule buffer eviction after `delayMs`. Replaces any existing timer for
+   * this output. Used for outputs that transition to a terminal 'error'
+   * without a follow-up stop command, so their buffers don't linger forever.
+   */
+  scheduleEviction(outputSessionId: string, delayMs: number = ERROR_EVICTION_DELAY_MS): void {
+    this.cancelEviction(outputSessionId);
+    const timer = setTimeout(() => {
+      this.buffers.delete(outputSessionId);
+      this.evictionTimers.delete(outputSessionId);
+    }, delayMs);
+    this.evictionTimers.set(outputSessionId, timer);
+  }
+
+  /** Cancel a pending eviction (e.g. output resurrected, or stop arrived). */
+  cancelEviction(outputSessionId: string): void {
+    const timer = this.evictionTimers.get(outputSessionId);
+    if (timer) {
+      clearTimeout(timer);
+      this.evictionTimers.delete(outputSessionId);
     }
+  }
+
+  /** Remove buffer and cancel any pending eviction (stop path). */
+  removeOutput(outputSessionId: string): void {
+    this.cancelEviction(outputSessionId);
     this.buffers.delete(outputSessionId);
-  }
-
-  private async writeToRedis(sessionId: string, outputSessionId: string, line: string): Promise<void> {
-    const key = `stream:${sessionId}:logs:${outputSessionId}`;
-    const redis = getRedis();
-    const pipeline = redis.pipeline();
-    pipeline.lpush(key, line);
-    pipeline.ltrim(key, 0, REDIS_LOG_MAX_LINES - 1);
-    pipeline.expire(key, REDIS_LOG_TTL);
-    await pipeline.exec();
-  }
-
-  private async flushAllToCloudWatch(): Promise<void> {
-    for (const buf of this.buffers.values()) {
-      if (buf.lines.length > 0) {
-        await this.flushBufferToCloudWatch(buf);
-      }
-    }
-  }
-
-  private async flushBufferToCloudWatch(buf: OutputLogBuffer): Promise<void> {
-    const events = buf.lines.splice(0); // Take all and clear
-    if (events.length === 0) return;
-
-    const logStream = `${buf.sessionId}/${buf.outputSessionId}`;
-    try {
-      await this.cwPublisher.putLogEvents(CW_LOG_GROUP, logStream, events);
-    } catch (err) {
-      console.error('[LogCapture] CloudWatch put failed for', logStream, err);
-    }
   }
 }

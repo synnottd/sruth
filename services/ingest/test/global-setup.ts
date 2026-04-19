@@ -29,7 +29,7 @@ export async function teardown() {
 async function waitForServices() {
   await Promise.all([
     waitForHttp('http://127.0.0.1:3001/health', 'mock-api'),
-    waitForHttp('http://127.0.0.1:8080/health', 'ingest'),
+    waitForHttp('http://127.0.0.1:9997/v3/paths/list', 'ingest'),
   ])
 }
 

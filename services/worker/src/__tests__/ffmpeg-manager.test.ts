@@ -1,7 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter, PassThrough } from 'node:stream';
 import type { ChildProcess } from 'node:child_process';
-import type { OutputTarget } from '@omega-stream/shared';
 import type { ProgressMetrics } from '../progress-parser.js';
 
 // Create a fake child process with PassThrough streams for stdout/stderr
@@ -43,15 +42,15 @@ vi.mock('node:child_process', () => ({
   }),
 }));
 
-import { FfmpegManager, type FfmpegManagerEvents, type OutputStatus } from '../ffmpeg-manager.js';
+import { FfmpegManager, redactStreamKey, type FfmpegManagerEvents, type OutputStatus } from '../ffmpeg-manager.js';
 
-const testOutput: OutputTarget = {
+const testOutput = {
   outputSessionId: 'out-1',
   rtmpUrl: 'rtmp://live.twitch.tv/app',
   streamKey: 'live_xxx',
 };
 
-const testOutput2: OutputTarget = {
+const testOutput2 = {
   outputSessionId: 'out-2',
   rtmpUrl: 'rtmp://a.rtmp.youtube.com/live2',
   streamKey: 'yt_yyy',
@@ -80,6 +79,7 @@ describe('FfmpegManager', () => {
       onStderrLine: (sessionId, outputSessionId, line) => {
         stderrLines.push({ sessionId, outputSessionId, line });
       },
+      onReconnect: () => {},
     };
 
     manager = new FfmpegManager(events);
@@ -113,11 +113,14 @@ describe('FfmpegManager', () => {
       ]);
     });
 
-    it('ignores duplicate session start', () => {
+    it('is idempotent — diffs outputs on duplicate session start', () => {
       manager.startSession('s1', 'u1', 'key1', '10.0.1.1', [testOutput]);
-      manager.startSession('s1', 'u1', 'key1', '10.0.1.1', [testOutput2]);
+      manager.startSession('s1', 'u1', 'key1', '10.0.1.1', [testOutput, testOutput2]);
 
-      expect(fakeProcesses).toHaveLength(1);
+      // Should have spawned out-1 initially, then added out-2 on second call
+      expect(fakeProcesses).toHaveLength(2);
+      const session = manager.getSession('s1');
+      expect(session!.outputs.size).toBe(2);
     });
   });
 
@@ -201,8 +204,8 @@ describe('FfmpegManager', () => {
       const retryChange = statusChanges.find((s) => s.status === 'retrying');
       expect(retryChange).toBeDefined();
 
-      // Advance past first backoff (1s)
-      await vi.advanceTimersByTimeAsync(1100);
+      // Advance past first backoff (2s)
+      await vi.advanceTimersByTimeAsync(2100);
 
       // Should have spawned a second process
       expect(fakeProcesses).toHaveLength(2);
@@ -211,15 +214,16 @@ describe('FfmpegManager', () => {
     it('marks error after max retries exhausted', async () => {
       manager.startSession('s1', 'u1', 'key1', '10.0.1.1', [testOutput]);
 
-      for (let i = 0; i <= 5; i++) {
+      // MAX_RETRIES is 8, BACKOFF_BASE_MS is 2000
+      for (let i = 0; i <= 8; i++) {
         const proc = fakeProcesses[i];
         proc.stderr.write('Connection refused\n');
         await vi.advanceTimersByTimeAsync(10);
         proc._close(1);
         await vi.advanceTimersByTimeAsync(10);
 
-        if (i < 5) {
-          const delay = 1000 * Math.pow(2, i);
+        if (i < 8) {
+          const delay = 2000 * Math.pow(2, i);
           await vi.advanceTimersByTimeAsync(delay + 100);
         }
       }
@@ -263,39 +267,6 @@ describe('FfmpegManager', () => {
       // No retry
       await vi.advanceTimersByTimeAsync(5000);
       expect(fakeProcesses).toHaveLength(1);
-    });
-  });
-
-  describe('relocateIngest', () => {
-    it('restarts all outputs with new ingest IP', async () => {
-      manager.startSession('s1', 'u1', 'key1', '10.0.1.1', [testOutput]);
-      expect(fakeProcesses).toHaveLength(1);
-
-      await manager.relocateIngest('s1', '10.0.2.1');
-
-      // Original + new spawn
-      expect(fakeProcesses).toHaveLength(2);
-
-      const session = manager.getSession('s1');
-      expect(session!.ingestIp).toBe('10.0.2.1');
-    });
-
-    it('aborts in-progress retry sleeps', async () => {
-      manager.startSession('s1', 'u1', 'key1', '10.0.1.1', [testOutput]);
-      const proc = fakeProcesses[0];
-
-      // Trigger transient error to enter retry sleep
-      proc.stderr.write('Connection refused\n');
-      await vi.advanceTimersByTimeAsync(10);
-      proc._close(1);
-
-      // Now in retry sleep — relocate should abort it
-      await manager.relocateIngest('s1', '10.0.2.1');
-
-      const session = manager.getSession('s1');
-      const output = session!.outputs.get('out-1')!;
-      expect(output.retryCount).toBe(0); // Reset
-      expect(output.status).toBe('starting');
     });
   });
 
@@ -367,5 +338,24 @@ describe('FfmpegManager', () => {
       expect(session!.outputs.size).toBe(1);
       expect(session!.outputs.has('out-2')).toBe(true);
     });
+  });
+});
+
+describe('redactStreamKey', () => {
+  // Add new protocols/shapes here as we support them.
+  test.each([
+    { name: 'rtmp with path key', input: 'rtmp://live.twitch.tv/app/SECRETKEY', expected: 'rtmp://live.twitch.tv/app/***' },
+    { name: 'rtmps with path key', input: 'rtmps://live-api-s.facebook.com:443/rtmp/SECRETKEY', expected: 'rtmps://live-api-s.facebook.com:443/rtmp/***' },
+    { name: 'srt with streamid query', input: 'srt://srt.example.com:10000?streamid=SECRETKEY', expected: 'srt://srt.example.com:10000?streamid=***' },
+  ])('redacts $name', ({ input, expected }) => {
+    expect(redactStreamKey(input)).toBe(expected);
+  });
+
+  it('returns [unparseable url] for invalid input', () => {
+    expect(redactStreamKey('not a url')).toBe('[unparseable url]');
+  });
+
+  it('leaves base URLs without a key segment unchanged', () => {
+    expect(redactStreamKey('rtmp://live.twitch.tv/app')).toBe('rtmp://live.twitch.tv/app');
   });
 });

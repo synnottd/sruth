@@ -1,8 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { sendCommand } from '../../lib/sqs.js';
-
-const ACTIVE_TTL = 6 * 60 * 60; // 6 hours
-const COOLDOWN_TTL = 3; // 3 seconds
+import { sendCommand } from '../../lib/commands.js';
 
 export default async function internalStreamRoutes(fastify: FastifyInstance) {
   fastify.post<{
@@ -23,175 +20,100 @@ export default async function internalStreamRoutes(fastify: FastifyInstance) {
       });
     }
 
-    // 2. Check cooldown
-    const cooldown = await fastify.redis.exists(`stream:${streamKey}:cooldown`);
-    if (cooldown) {
-      return reply.code(429).send({
-        statusCode: 429,
-        error: 'COOLDOWN',
-        message: 'Reconnecting too fast, wait a few seconds',
-      });
+    // 2. Check for existing LIVE/STARTING session
+    const existingSession = await fastify.prisma.streamSession.findFirst({
+      where: {
+        userId: user.id,
+        status: { in: ['STARTING', 'LIVE'] },
+      },
+    });
+
+    if (existingSession) {
+      // Resume — FFmpeg is still running, no command needed
+      // Update ingest IP if changed
+      if (existingSession.ingestIp !== clientIp) {
+        await fastify.prisma.streamSession.update({
+          where: { id: existingSession.id },
+          data: { ingestIp: clientIp },
+        });
+      }
+      return reply.code(200).send({ status: 'resumed' });
     }
 
-    // 3. Check existing active session
-    const existingSessionId = await fastify.redis.get(`stream:${streamKey}:active`);
-    if (existingSessionId) {
-      const existingIp = await fastify.redis.get(`stream:${streamKey}:ingest_ip`);
+    // 3. Create StreamSession + OutputSessions + WorkerCommand in a transaction
+    const outputs = await fastify.prisma.output.findMany({
+      where: { userId: user.id, enabled: true, deletedAt: null },
+    });
 
-      if (existingIp === clientIp) {
-        // Same IP = genuine duplicate
+    try {
+      await fastify.prisma.$transaction(async (tx) => {
+        const session = await tx.streamSession.create({
+          data: { userId: user.id, ingestIp: clientIp },
+        });
+
+        await Promise.all(
+          outputs.map((output) =>
+            tx.outputSession.create({
+              data: { sessionId: session.id, outputId: output.id },
+            }),
+          ),
+        );
+
+        await tx.workerCommand.create({
+          data: {
+            payload: {
+              type: 'start',
+              userId: user.id,
+              sessionId: session.id,
+            },
+          },
+        });
+      });
+    } catch (err: any) {
+      // Partial unique index violation = another request won the race
+      if (err?.code === 'P2002') {
         return reply.code(409).send({
           statusCode: 409,
           error: 'DUPLICATE_STREAM',
-          message: 'Stream is already active from this IP',
+          message: 'Stream became active during processing',
         });
       }
-
-      // Different IP = ingest failover
-      await fastify.redis.set(`stream:${streamKey}:ingest_ip`, clientIp, 'EX', ACTIVE_TTL);
-      try {
-        await sendCommand({
-          type: 'ingest_relocated',
-          userId: user.id,
-          sessionId: existingSessionId,
-          newIngestIp: clientIp,
-        });
-      } catch (err) {
-        // Revert ingest_ip so Redis matches what the worker is actually using
-        if (existingIp) {
-          try {
-            await fastify.redis.set(`stream:${streamKey}:ingest_ip`, existingIp, 'EX', ACTIVE_TTL);
-          } catch (revertErr) {
-            fastify.log.error({ streamKey, revertErr }, 'Failed to revert ingest_ip');
-          }
-        }
-        fastify.log.warn({ sessionId: existingSessionId, err }, 'Failed to send ingest_relocated command');
-        return reply.code(503).send({
-          statusCode: 503,
-          error: 'WORKER_UNAVAILABLE',
-          message: 'Failed to notify worker of ingest relocation',
-        });
-      }
-      return reply.code(200).send({ status: 'relocated' });
+      throw err;
     }
 
-    // 4. Create StreamSession + OutputSessions in a transaction
-    const outputs = await fastify.prisma.output.findMany({
-      where: { userId: user.id, enabled: true },
-    });
-
-    const { session, outputSessions } = await fastify.prisma.$transaction(async (tx) => {
-      const session = await tx.streamSession.create({
-        data: { userId: user.id },
-      });
-      const outputSessions = await Promise.all(
-        outputs.map((output) =>
-          tx.outputSession.create({
-            data: { sessionId: session.id, outputId: output.id },
-          }),
-        ),
-      );
-      return { session, outputSessions };
-    });
-
-    // 5. Atomically claim the active slot — if another request won, roll back
-    const claimed = await fastify.redis.set(
-      `stream:${streamKey}:active`, session.id, 'EX', ACTIVE_TTL, 'NX',
-    );
-    if (!claimed) {
-      await fastify.prisma.outputSession.deleteMany({ where: { sessionId: session.id } });
-      await fastify.prisma.streamSession.delete({ where: { id: session.id } });
-      return reply.code(409).send({
-        statusCode: 409,
-        error: 'DUPLICATE_STREAM',
-        message: 'Stream became active during processing',
-      });
-    }
-
-    // 6. Set remaining Redis keys + cooldown (after successful claim)
-    await fastify.redis.set(`stream:${streamKey}:ingest_ip`, clientIp, 'EX', ACTIVE_TTL);
-    await fastify.redis.set(`stream:${streamKey}:cooldown`, '1', 'EX', COOLDOWN_TTL);
-
-    // 9. Send SQS start command — if this fails, roll back so the user can retry
-    const outputMap = new Map(outputs.map((o) => [o.id, o]));
-    try {
-      await sendCommand({
-        type: 'start',
-        userId: user.id,
-        sessionId: session.id,
-        ingestIp: clientIp,
-        streamKey,
-        outputs: outputSessions.map((os) => {
-          const output = outputMap.get(os.outputId)!;
-          return {
-            outputSessionId: os.id,
-            rtmpUrl: output.rtmpUrl,
-            streamKey: output.streamKey,
-          };
-        }),
-      });
-    } catch (err) {
-      // Roll back Redis + DB so the user isn't stuck with a phantom session
-      fastify.log.warn({ sessionId: session.id, err }, 'SQS send failed in on_publish, rolling back');
-      const results = await Promise.allSettled([
-        fastify.redis.del(`stream:${streamKey}:active`),
-        fastify.redis.del(`stream:${streamKey}:ingest_ip`),
-        fastify.redis.del(`stream:${streamKey}:cooldown`),
-        fastify.prisma.outputSession.deleteMany({ where: { sessionId: session.id } }),
-        fastify.prisma.streamSession.delete({ where: { id: session.id } }),
-      ]);
-      const failures = results.filter((r) => r.status === 'rejected');
-      if (failures.length > 0) {
-        fastify.log.error({ sessionId: session.id, failures }, 'Partial rollback failure in on_publish');
-      }
-      return reply.code(503).send({
-        statusCode: 503,
-        error: 'WORKER_UNAVAILABLE',
-        message: 'Failed to notify worker — stream rejected, please retry',
-      });
-    }
-
-    // 10. Return 200
     return reply.code(200).send({ status: 'ok' });
   });
 
   fastify.post<{
     Body: { app: string; name: string };
-  }>('/internal/stream/on-publish-done', async (request, reply) => {
+  }>('/internal/stream/on-unpublish', async (request, reply) => {
     const streamKey = request.body.name;
 
-    // Find active session
-    const sessionId = await fastify.redis.get(`stream:${streamKey}:active`);
-    if (!sessionId) {
-      return reply.code(200).send({ status: 'no_active_session' });
+    const user = await fastify.prisma.user.findFirst({
+      where: { streamKey },
+    });
+    if (!user) {
+      return reply.code(200).send({ status: 'ignored' });
     }
 
-    // 1. Mark StreamSession as STOPPED
-    const session = await fastify.prisma.streamSession.update({
-      where: { id: sessionId },
-      data: { status: 'STOPPED', endedAt: new Date() },
+    // Find active session for this user
+    const session = await fastify.prisma.streamSession.findFirst({
+      where: {
+        userId: user.id,
+        status: { in: ['STARTING', 'LIVE'] },
+      },
     });
 
-    // 2. Mark all OutputSessions as STOPPED
-    await fastify.prisma.outputSession.updateMany({
-      where: { sessionId },
-      data: { status: 'STOPPED', endedAt: new Date() },
-    });
-
-    // 3. Send SQS stop command — best-effort, don't block cleanup
-    try {
-      await sendCommand({
-        type: 'stop',
-        userId: session.userId,
-        sessionId,
-      });
-    } catch (err) {
-      fastify.log.warn({ sessionId, err }, 'Failed to send SQS stop command');
+    if (!session) {
+      return reply.code(200).send({ status: 'no-session' });
     }
 
-    // 4. Delete Redis keys
-    await fastify.redis.del(`stream:${streamKey}:active`);
-    await fastify.redis.del(`stream:${streamKey}:ingest_ip`);
+    // Send stop command to worker
+    await sendCommand(fastify.prisma, {
+      type: 'stop',
+      userId: user.id,
+      sessionId: session.id,
+    });
 
     return reply.code(200).send({ status: 'ok' });
   });

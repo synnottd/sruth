@@ -32,7 +32,7 @@ describe('stream passthrough', () => {
     stop()
     await done
 
-    // Brief wait for nginx-rtmp to close the stream
+    // Brief wait for MediaMTX to close the stream
     await new Promise((resolve) => setTimeout(resolve, 500))
 
     expect(await probeStream('passthrough-key', 3)).toBe(false)

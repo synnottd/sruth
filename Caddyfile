@@ -22,7 +22,7 @@ sruth.live {
         header Cache-Control "public, max-age=300"
     }
 
-    @me remote_ip 51.171.169.115/32
+    @me remote_ip 51.171.169.115/32 2001:bb6:5a4:6e00::/64
     handle @me {
         reverse_proxy web:3002
     }
@@ -35,7 +35,7 @@ sruth.live {
 api.sruth.live {
     import security_headers
 
-    @me remote_ip 51.171.169.115/32
+    @me remote_ip 51.171.169.115/32 2001:bb6:5a4:6e00::/64
     handle @me {
         reverse_proxy api:3000
     }

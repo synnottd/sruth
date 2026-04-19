@@ -117,7 +117,6 @@ export class WorkerHttpServer {
       sessionId,
       outputSessionId,
       bitrate: metrics.bitrate,
-      fps: metrics.fps,
       dropFrames: metrics.dropFrames,
       speed: metrics.speed,
     });

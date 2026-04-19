@@ -1,4 +1,4 @@
-import Fastify from 'fastify';
+import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import prismaPlugin from './plugins/prisma.js';
 import authPlugin from './plugins/auth.js';
@@ -9,8 +9,8 @@ import internalStreamRoutes from './routes/internal/stream.js';
 import streamsRoutes from './routes/streams.js';
 import healthRoutes from './routes/health.js';
 
-function addErrorHandler(app: ReturnType<typeof Fastify>) {
-  app.setErrorHandler((error, _request, reply) => {
+function addErrorHandler(app: FastifyInstance) {
+  app.setErrorHandler((error: FastifyError, _request, reply) => {
     const statusCode = error.statusCode ?? 500;
     if (statusCode >= 500) {
       app.log.error(error);
@@ -23,7 +23,7 @@ function addErrorHandler(app: ReturnType<typeof Fastify>) {
   });
 }
 
-function addFormParser(app: ReturnType<typeof Fastify>) {
+function addFormParser(app: FastifyInstance) {
   app.addContentTypeParser(
     'application/x-www-form-urlencoded',
     { parseAs: 'string' },

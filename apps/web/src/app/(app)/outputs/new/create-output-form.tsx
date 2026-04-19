@@ -23,8 +23,8 @@ export function CreateOutputForm() {
   const [rtmpUrl, setRtmpUrl] = useState(PLATFORM_PRESETS.TWITCH);
 
   function handlePlatformChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const value = e.target.value;
-    setPlatform(value as Platform);
+    const value = e.target.value as Platform;
+    setPlatform(value);
     setRtmpUrl(PLATFORM_PRESETS[value] ?? "");
   }
 

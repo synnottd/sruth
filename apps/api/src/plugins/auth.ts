@@ -29,12 +29,43 @@ export default fp(async (fastify: FastifyInstance) => {
       });
     }
   });
+
+  fastify.decorate('authenticateAdmin', async (request: FastifyRequest, reply: FastifyReply) => {
+    await fastify.authenticate(request, reply);
+    if (reply.sent) return;
+    if (!isAdmin(request.user.email)) {
+      return reply.code(403).send({
+        statusCode: 403,
+        error: 'FORBIDDEN',
+        message: 'Admin only',
+      });
+    }
+  });
 });
 
 declare module 'fastify' {
   interface FastifyInstance {
     authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    authenticateAdmin: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
   }
+}
+
+/**
+ * Return true if `email` is in ADMIN_EMAILS. The env var is a comma-separated
+ * list; we parse on each call so tests (and env reloads) see fresh values.
+ * Entries are trimmed, lowercased, and empty pieces skipped so a stray space
+ * or trailing comma in the deploy config doesn't silently lock an admin out.
+ */
+export function isAdmin(email: string): boolean {
+  const raw = process.env.ADMIN_EMAILS ?? '';
+  const allowed = raw
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  if (allowed.length === 0) return false;
+  const candidate = email.toLowerCase();
+  if (candidate === '') return false;
+  return allowed.includes(candidate);
 }
 
 // Access tokens carry { sub, email }; refresh tokens carry { sub, tokenId }.

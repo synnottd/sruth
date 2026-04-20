@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
+import { isAdmin } from '../plugins/auth.js';
 
 const SALT_ROUNDS = 12;
 const ACCESS_EXPIRY_SECONDS = 15 * 60; // 15 minutes
@@ -231,6 +232,12 @@ export default async function authRoutes(fastify: FastifyInstance) {
       .code(200)
       .send({ accessToken });
   });
+
+  fastify.get('/auth/me', { onRequest: [fastify.authenticate] }, async (request) => ({
+    id: request.user.sub,
+    email: request.user.email,
+    isAdmin: isAdmin(request.user.email),
+  }));
 
   fastify.post('/auth/logout', async (request, reply) => {
     const token = request.cookies.refreshToken;

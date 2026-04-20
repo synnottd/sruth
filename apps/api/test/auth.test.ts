@@ -154,6 +154,62 @@ describe('POST /auth/logout', () => {
   });
 });
 
+describe('GET /auth/me', () => {
+  const originalAdminEmails = process.env.ADMIN_EMAILS;
+  afterAll(() => {
+    if (originalAdminEmails === undefined) delete process.env.ADMIN_EMAILS;
+    else process.env.ADMIN_EMAILS = originalAdminEmails;
+  });
+
+  it('returns 401 when no access token is present', async () => {
+    const app = await getApp();
+    const res = await app.inject({ method: 'GET', url: '/auth/me' });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('returns { id, email, isAdmin:false } for a non-admin user', async () => {
+    delete process.env.ADMIN_EMAILS;
+    const { response: regRes, body: regBody } = await registerUser({
+      email: 'me-nonadmin@example.com',
+    });
+    const accessCookie = regRes.cookies.find((c: any) => c.name === 'accessToken');
+    const app = await getApp();
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/auth/me',
+      cookies: { accessToken: accessCookie!.value },
+    });
+    const body = JSON.parse(res.body);
+
+    expect(res.statusCode).toBe(200);
+    expect(body.email).toBe('me-nonadmin@example.com');
+    expect(body.id).toBeTypeOf('string');
+    expect(body.isAdmin).toBe(false);
+    // Password hash etc must never leak in /auth/me.
+    expect(body).not.toHaveProperty('passwordHash');
+    expect(regBody.accessToken).toBeTypeOf('string');
+  });
+
+  it('returns isAdmin:true when the user email is in ADMIN_EMAILS', async () => {
+    process.env.ADMIN_EMAILS = 'me-admin@example.com';
+    const { response: regRes } = await registerUser({ email: 'me-admin@example.com' });
+    const accessCookie = regRes.cookies.find((c: any) => c.name === 'accessToken');
+    const app = await getApp();
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/auth/me',
+      cookies: { accessToken: accessCookie!.value },
+    });
+    const body = JSON.parse(res.body);
+
+    expect(res.statusCode).toBe(200);
+    expect(body.email).toBe('me-admin@example.com');
+    expect(body.isAdmin).toBe(true);
+  });
+});
+
 describe('cookie-only authentication', () => {
   it('allows access to protected routes using only the accessToken cookie', async () => {
     const { response: regRes } = await registerUser({ email: 'cookieauth@example.com' });

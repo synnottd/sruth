@@ -17,6 +17,34 @@ hls: no
 srt: yes
 rtmp: yes
 
+# Internal auth table. The first two rules reproduce MediaMTX's built-in
+# defaults (anonymous publish/read; localhost-only API). The third grants the
+# Sruth API read-only API access via Basic auth so the admin dashboard can
+# query /v3/paths/list from another container. ${INTERNAL_SECRET} is
+# substituted by MediaMTX at config-load time.
+authInternalUsers:
+  - user: any
+    pass:
+    ips: []
+    permissions:
+      - {action: publish}
+      - {action: read}
+      - {action: playback}
+
+  - user: any
+    pass:
+    ips: ['127.0.0.1', '::1']
+    permissions:
+      - {action: api}
+      - {action: metrics}
+      - {action: pprof}
+
+  - user: sruth-api
+    pass: ${INTERNAL_SECRET}
+    ips: []
+    permissions:
+      - {action: api}
+
 # RTMP server
 rtmpAddress: :1935
 

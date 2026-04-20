@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { Platform } from '@prisma/client';
 import { z } from 'zod';
+import { sendCommand } from '../lib/commands.js';
 
 const MAX_OUTPUTS = 5;
 
@@ -89,14 +90,63 @@ export default async function outputRoutes(fastify: FastifyInstance) {
       });
     }
 
-    const updated = await fastify.prisma.output.update({
-      where: { id },
-      data: {
-        ...(name !== undefined && { name }),
-        ...(rtmpUrl !== undefined && { rtmpUrl }),
-        ...(streamKey !== undefined && { streamKey }),
-        ...(enabled !== undefined && { enabled }),
-      },
+    const enabledChanged = enabled !== undefined && enabled !== existing.enabled;
+
+    const activeSession = enabledChanged
+      ? await fastify.prisma.streamSession.findFirst({
+          where: { userId, status: { in: ['STARTING', 'LIVE'] } },
+        })
+      : null;
+
+    const updated = await fastify.prisma.$transaction(async (tx) => {
+      const u = await tx.output.update({
+        where: { id },
+        data: {
+          ...(name !== undefined && { name }),
+          ...(rtmpUrl !== undefined && { rtmpUrl }),
+          ...(streamKey !== undefined && { streamKey }),
+          ...(enabled !== undefined && { enabled }),
+        },
+      });
+
+      if (!enabledChanged || !activeSession) return u;
+
+      const existingOs = await tx.outputSession.findUnique({
+        where: { sessionId_outputId: { sessionId: activeSession.id, outputId: id } },
+      });
+
+      if (enabled === false) {
+        if (existingOs && (existingOs.status === 'STARTING' || existingOs.status === 'LIVE' || existingOs.status === 'RETRYING')) {
+          await sendCommand(tx, {
+            type: 'stop',
+            userId,
+            sessionId: activeSession.id,
+            outputSessionId: existingOs.id,
+          });
+        }
+        return u;
+      }
+
+      let os = existingOs;
+      if (!os) {
+        os = await tx.outputSession.create({
+          data: { sessionId: activeSession.id, outputId: id, status: 'STARTING' },
+        });
+      } else if (os.status === 'STOPPED' || os.status === 'ERROR') {
+        os = await tx.outputSession.update({
+          where: { id: os.id },
+          data: { status: 'STARTING', lastError: null, endedAt: null, reconnectCount: 0 },
+        });
+      } else {
+        return u;
+      }
+      await sendCommand(tx, {
+        type: 'start',
+        userId,
+        sessionId: activeSession.id,
+        outputSessionId: os.id,
+      });
+      return u;
     });
 
     return maskStreamKey(updated);

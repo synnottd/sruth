@@ -8,20 +8,40 @@ const VARIANT_CLASSES: Record<string, string> = {
 const STATUS_VARIANTS: Record<string, string> = {
   LIVE: "green",
   STARTING: "yellow",
+  RETRYING: "yellow",
   ERROR: "red",
   STOPPED: "zinc",
   Enabled: "green",
   Disabled: "zinc",
 };
 
-export function StatusBadge({ label }: { label: string }) {
-  const variant = STATUS_VARIANTS[label] ?? "zinc";
+const STATUS_LABELS: Record<string, string> = {
+  LIVE: "Live",
+  STARTING: "Starting",
+  RETRYING: "Retrying",
+  ERROR: "Error",
+  STOPPED: "Stopped",
+};
+
+export function StatusBadge({
+  label,
+  status,
+  reconnectCount,
+}: {
+  label?: string;
+  status?: string;
+  reconnectCount?: number;
+}) {
+  const key = status ?? label ?? "";
+  const variant = VARIANT_CLASSES[STATUS_VARIANTS[key] ?? "zinc"];
+  let display = label ?? STATUS_LABELS[key] ?? key;
+  if (status === "RETRYING" && reconnectCount && reconnectCount > 0) {
+    display = `Retrying (attempt ${reconnectCount})`;
+  }
 
   return (
-    <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${VARIANT_CLASSES[variant]}`}
-    >
-      {label}
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${variant}`}>
+      {display}
     </span>
   );
 }

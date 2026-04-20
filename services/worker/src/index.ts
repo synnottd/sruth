@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
-import type { StopCommand, WorkerCommand } from '@sruth/shared';
+import type { StartCommand, StopCommand, WorkerCommand } from '@sruth/shared';
 import { CommandConsumer } from './command-consumer.js';
 import { FfmpegManager } from './ffmpeg-manager.js';
 import { HealthReporter } from './health-reporter.js';
@@ -19,9 +19,26 @@ let logs: LogCapture;
 let http: WorkerHttpServer;
 let statusHandler: StatusHandler;
 
-async function handleStart(sessionId: string): Promise<void> {
+async function handleStart(command: StartCommand): Promise<void> {
+  if (command.outputSessionId) {
+    const os = await prisma.outputSession.findUnique({
+      where: { id: command.outputSessionId },
+      include: { output: true, session: { include: { user: true } } },
+    });
+    if (!os || os.session.status === 'STOPPED') {
+      console.log('[Worker] OutputSession or parent not found/stopped:', command.outputSessionId);
+      return;
+    }
+    await ffmpeg.addOutputs(os.sessionId, [{
+      outputSessionId: os.id,
+      rtmpUrl: os.output.rtmpUrl,
+      streamKey: os.output.streamKey,
+    }]);
+    return;
+  }
+
   const session = await prisma.streamSession.findUnique({
-    where: { id: sessionId },
+    where: { id: command.sessionId },
     include: {
       user: true,
       outputSessions: {
@@ -32,7 +49,7 @@ async function handleStart(sessionId: string): Promise<void> {
   });
 
   if (!session || session.status === 'STOPPED') {
-    console.log('[Worker] Session not found or stopped:', sessionId);
+    console.log('[Worker] Session not found or stopped:', command.sessionId);
     return;
   }
 
@@ -128,7 +145,7 @@ async function handleCommand(command: WorkerCommand): Promise<void> {
   switch (command.type) {
     case 'start': {
       try {
-        await handleStart(command.sessionId);
+        await handleStart(command);
       } catch (err) {
         console.error('[Worker] start failed; marking session ERROR:', command.sessionId, err);
         await markSessionError(command.sessionId);
@@ -270,15 +287,8 @@ async function main(): Promise<void> {
         http.pushLog(session.userId, sessionId, outputSessionId, line);
       }
     },
-    onReconnect: (_sessionId, outputSessionId) => {
-      prisma.outputSession
-        .update({
-          where: { id: outputSessionId },
-          data: { reconnectCount: { increment: 1 } },
-        })
-        .catch((err) => {
-          console.error('[Worker] reconnect count update failed:', outputSessionId, err);
-        });
+    onReconnect: () => {
+      // reconnect count is maintained by status-handler on 'retrying'/'live' events
     },
   });
 

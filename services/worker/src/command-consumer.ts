@@ -42,43 +42,52 @@ export class CommandConsumer {
   }
 
   private async processNext(handler: CommandHandler): Promise<void> {
-    // Atomically claim the oldest command: the DELETE ... RETURNING statement
-    // removes the row from the queue in the same operation that hands it to
-    // us. This gives at-most-once semantics — if the process crashes after
-    // this statement but before/during handler execution, the command is lost
-    // rather than replayed. Replay was unsafe because several handlers (e.g.
-    // the full-session `stop` path in index.ts) are not idempotent and would
-    // corrupt DB state on a second run (e.g. overwrite `endedAt`).
+    // Atomically claim the oldest PENDING command by flipping it to CLAIMED.
+    // At-most-once semantics: the row is reserved to this handler run; if
+    // the process crashes mid-handler the row stays CLAIMED and the orphan
+    // reaper flips it to FAILED after the stale window. Handlers are not
+    // idempotent (full-session stop overwrites endedAt), so replay is unsafe.
     //
-    // FOR UPDATE SKIP LOCKED is belt-and-braces for any future multi-consumer
-    // scenario; today we run a single worker, so the subquery would never
-    // contend, but it costs nothing and makes the semantics explicit.
-    const rows = await this.prisma.$queryRaw<Array<{ payload: unknown }>>`
-      DELETE FROM "WorkerCommand"
+    // FOR UPDATE SKIP LOCKED serialises concurrent claims cleanly against
+    // future multi-consumer scenarios.
+    const rows = await this.prisma.$queryRaw<Array<{ id: string; payload: unknown }>>`
+      UPDATE "WorkerCommand"
+      SET status = 'CLAIMED', "claimedAt" = now()
       WHERE id = (
         SELECT id FROM "WorkerCommand"
+        WHERE status = 'PENDING'
         ORDER BY "createdAt" ASC
         LIMIT 1
         FOR UPDATE SKIP LOCKED
       )
-      RETURNING payload
+      RETURNING id, payload
     `;
 
     if (rows.length === 0) return;
 
-    const command = rows[0].payload as WorkerCommand;
+    const { id, payload } = rows[0];
+    const command = payload as WorkerCommand;
 
     try {
       await handler(command);
+      await this.prisma.$executeRaw`
+        UPDATE "WorkerCommand"
+        SET status = 'DONE', "completedAt" = now()
+        WHERE id = ${id} AND status = 'CLAIMED'
+      `;
     } catch (err) {
-      // The command has already been removed from the queue. Log loudly so
-      // operators notice; we do not replay because replay can corrupt state.
       console.error(
-        '[CommandConsumer] Handler failed — command discarded:',
+        '[CommandConsumer] Handler failed — marking FAILED:',
         command.type,
         command.sessionId,
         err,
       );
+      const lastError = err instanceof Error ? err.message : String(err);
+      await this.prisma.$executeRaw`
+        UPDATE "WorkerCommand"
+        SET status = 'FAILED', "completedAt" = now(), "lastError" = ${lastError}
+        WHERE id = ${id} AND status = 'CLAIMED'
+      `;
     }
   }
 }

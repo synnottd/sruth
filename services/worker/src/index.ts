@@ -7,6 +7,7 @@ import { HealthReporter } from './health-reporter.js';
 import { LogCapture } from './log-capture.js';
 import { WorkerHttpServer } from './http.js';
 import { config } from './config.js';
+import { start as startReaper, type Reaper } from './orphan-reaper.js';
 import { createStatusHandler, type StatusHandler } from './status-handler.js';
 
 const adapter = new PrismaPg(config.databaseUrl);
@@ -18,6 +19,7 @@ let health: HealthReporter;
 let logs: LogCapture;
 let http: WorkerHttpServer;
 let statusHandler: StatusHandler;
+let reaper: Reaper;
 
 async function handleStart(sessionId: string): Promise<void> {
   const session = await prisma.streamSession.findUnique({
@@ -208,6 +210,7 @@ async function shutdown(signal: string): Promise<void> {
   hardTimeout.unref();
 
   try {
+    reaper?.stop();
     await consumer.stop();
     await http.stop();
     health.stop();
@@ -293,6 +296,11 @@ async function main(): Promise<void> {
 
   // Recover active sessions before starting consumer
   await recoverSessions();
+
+  // Sweep orphaned command claims left by any previous crash, then begin
+  // the periodic reap loop. Runs before consumer.start() so a fresh claim
+  // can't be mistaken for an orphan.
+  reaper = startReaper(prisma);
 
   process.on('SIGTERM', () => { shutdown('SIGTERM').catch(() => process.exit(1)); });
   process.on('SIGINT', () => { shutdown('SIGINT').catch(() => process.exit(1)); });

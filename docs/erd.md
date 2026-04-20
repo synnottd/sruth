@@ -26,6 +26,15 @@ ERROR ERROR
 STOPPED STOPPED
         }
     
+
+
+        WorkerCommandStatus {
+            PENDING PENDING
+CLAIMED CLAIMED
+DONE DONE
+FAILED FAILED
+        }
+    
   "User" {
     String id "PK"
     String email 
@@ -80,6 +89,10 @@ STOPPED STOPPED
   "WorkerCommand" {
     String id "PK"
     Json payload 
+    WorkerCommandStatus status 
+    DateTime claimedAt "nullable"
+    DateTime completedAt "nullable"
+    String lastError "nullable"
     DateTime createdAt 
     }
   
@@ -91,4 +104,5 @@ STOPPED STOPPED
     "OutputSession" }o--|| "StreamSession" : "session"
     "OutputSession" }o--|| "Output" : "output"
     "RefreshToken" }o--|| "User" : "user"
+    "WorkerCommand" |o--|| "WorkerCommandStatus" : "enum:status"
 ```

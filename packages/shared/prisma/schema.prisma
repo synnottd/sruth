@@ -110,8 +110,21 @@ model RefreshToken {
   @@index([userId])
 }
 
+enum WorkerCommandStatus {
+  PENDING
+  CLAIMED
+  DONE
+  FAILED
+}
+
 model WorkerCommand {
-  id        String   @id @default(uuid())
-  payload   Json
-  createdAt DateTime @default(now())
+  id          String              @id @default(uuid())
+  payload     Json
+  status      WorkerCommandStatus @default(PENDING)
+  claimedAt   DateTime?
+  completedAt DateTime?
+  lastError   String?
+  createdAt   DateTime            @default(now())
+
+  @@index([status, createdAt])
 }

@@ -41,3 +41,9 @@ export interface StreamInfo {
   streamKey: string;
   ingestUrl: string;
 }
+
+export interface CurrentUser {
+  id: string;
+  email: string;
+  isAdmin: boolean;
+}

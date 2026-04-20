@@ -3,16 +3,21 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogoutButton } from "./logout-button";
+import { useCurrentUser } from "@/lib/api/hooks";
 
 const NAV_ITEMS = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/outputs", label: "Outputs" },
-  { href: "/stream-setup", label: "Stream Setup" },
-  { href: "/logs", label: "Logs" },
+  { href: "/dashboard", label: "Dashboard", adminOnly: false },
+  { href: "/outputs", label: "Outputs", adminOnly: false },
+  { href: "/stream-setup", label: "Stream Setup", adminOnly: false },
+  { href: "/logs", label: "Logs", adminOnly: false },
+  { href: "/admin/status", label: "Admin", adminOnly: true },
 ] as const;
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { data: user } = useCurrentUser();
+  const isAdmin = user?.isAdmin ?? false;
+  const items = NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin);
 
   return (
     <aside className="hidden md:flex md:w-56 md:flex-col md:border-r md:border-zinc-800 md:bg-zinc-950">
@@ -20,7 +25,7 @@ export function Sidebar() {
         <span className="text-lg font-bold">Omega Stream</span>
       </div>
       <nav className="flex flex-1 flex-col gap-1 p-3">
-        {NAV_ITEMS.map(({ href, label }) => (
+        {items.map(({ href, label }) => (
           <Link
             key={href}
             href={href}
@@ -43,10 +48,11 @@ export function Sidebar() {
 
 export function BottomTabs() {
   const pathname = usePathname();
+  const items = NAV_ITEMS.filter((item) => !item.adminOnly);
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-50 flex border-t border-zinc-800 bg-zinc-950 md:hidden">
-      {NAV_ITEMS.map(({ href, label }) => (
+      {items.map(({ href, label }) => (
         <Link
           key={href}
           href={href}

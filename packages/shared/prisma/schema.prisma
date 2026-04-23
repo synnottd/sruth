@@ -1,3 +1,6 @@
+// After editing this schema, regenerate the ERD with `pnpm docs:erd` at the
+// repo root and commit the updated docs/erd.md alongside your change.
+
 generator client {
   provider = "prisma-client-js"
 }

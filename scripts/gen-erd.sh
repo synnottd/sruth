@@ -17,10 +17,10 @@ OUT="$ROOT/docs/erd.md"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-# Strip any existing generator blocks — we only want the ERD generator to run
-# against the tmp schema. Leaving `generator client` in would make Prisma try
-# to resolve @prisma/client relative to the tmp directory and fail.
-sed '/^generator [a-zA-Z]* {/,/^}$/d' "$SRC" > "$TMP/schema.prisma"
+# Strip the client generator — we only want the ERD generator to run against
+# the tmp schema. Leaving `generator client` in would make Prisma try to
+# resolve @prisma/client relative to the tmp directory and fail.
+sed '/^generator client {/,/^}$/d' "$SRC" > "$TMP/schema.prisma"
 cat >> "$TMP/schema.prisma" <<EOF
 
 generator erd {

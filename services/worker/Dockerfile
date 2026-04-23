@@ -21,7 +21,14 @@ COPY packages/shared packages/shared
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.base.json ./
 
 # Generate Prisma client
-RUN cd services/worker && npx prisma generate --config prisma/prisma.config.ts
+#
+# The shared schema declares a `generator erd` block for docs. Its binary
+# (`prisma-erd-generator`) is a devDep of `packages/shared` only, so a
+# service-filtered `pnpm install` doesn't install it and `prisma generate`
+# fails with "not found". Strip the block before generating — the committed
+# docs/erd.md is the source of truth and is regenerated via a local workflow.
+RUN sed -i '/^generator erd {/,/^}$/d' packages/shared/prisma/schema.prisma && \
+    cd services/worker && npx prisma generate --config prisma/prisma.config.ts
 
 # Build shared package
 RUN pnpm --filter @sruth/shared build

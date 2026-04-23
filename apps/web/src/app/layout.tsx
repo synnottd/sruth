@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Providers } from "@/components/providers";
 import "./globals.css";
@@ -14,8 +14,25 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Omega Stream",
-  description: "Multi-destination live streaming",
+  metadataBase: new URL("https://sruth.live"),
+  title: {
+    default: "Sruth",
+    template: "%s · Sruth",
+  },
+  description: "Multi-destination live streaming relay.",
+  applicationName: "Sruth",
+  robots: { index: false, follow: false },
+  openGraph: {
+    siteName: "Sruth",
+    title: "Sruth",
+    description: "Multi-destination live streaming relay.",
+    type: "website",
+  },
+};
+
+export const viewport: Viewport = {
+  colorScheme: "dark",
+  themeColor: "#0a3d2c",
 };
 
 export default function RootLayout({

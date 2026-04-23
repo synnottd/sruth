@@ -15,8 +15,8 @@ sruth.live {
     import security_headers
     import web_csp
 
-    @root path /
-    handle @root {
+    @landing path / /favicon.svg
+    handle @landing {
         root * /srv/landing
         file_server
         header Cache-Control "public, max-age=300"

@@ -76,6 +76,6 @@ describe("proxy (auth middleware)", () => {
   });
 
   it("matcher covers app and auth routes", () => {
-    expect(config.matcher).toContain("/((?!_next/static|_next/image|favicon.ico).*)");
+    expect(config.matcher).toContain("/((?!_next/static|_next/image|favicon.ico|icon.svg).*)");
   });
 });

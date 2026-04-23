@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "docker-compose up -d && pnpm --parallel --filter './apps/*' --filter './services/*' dev",
     "build": "pnpm --recursive build",
-    "test": "pnpm --recursive test"
+    "test": "pnpm --recursive test",
+    "docs:erd": "bash scripts/gen-erd.sh"
   },
   "devDependencies": {
     "dotenv-cli": "^11.0.0",

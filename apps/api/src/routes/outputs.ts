@@ -92,12 +92,6 @@ export default async function outputRoutes(fastify: FastifyInstance) {
 
     const enabledChanged = enabled !== undefined && enabled !== existing.enabled;
 
-    const activeSession = enabledChanged
-      ? await fastify.prisma.streamSession.findFirst({
-          where: { userId, status: { in: ['STARTING', 'LIVE'] } },
-        })
-      : null;
-
     const updated = await fastify.prisma.$transaction(async (tx) => {
       const u = await tx.output.update({
         where: { id },
@@ -109,7 +103,12 @@ export default async function outputRoutes(fastify: FastifyInstance) {
         },
       });
 
-      if (!enabledChanged || !activeSession) return u;
+      if (!enabledChanged) return u;
+
+      const activeSession = await tx.streamSession.findFirst({
+        where: { userId, status: { in: ['STARTING', 'LIVE'] } },
+      });
+      if (!activeSession) return u;
 
       const existingOs = await tx.outputSession.findUnique({
         where: { sessionId_outputId: { sessionId: activeSession.id, outputId: id } },

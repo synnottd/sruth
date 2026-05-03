@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import type { WorkerCommand } from '@sruth/shared';
@@ -7,16 +7,9 @@ import { CommandConsumer } from '../src/command-consumer.js';
 /**
  * Integration tests for CommandConsumer against a real Postgres.
  *
- * These cover what the unit tests can't: the SQL itself (syntax, column
- * quoting), real FIFO ordering by `createdAt`, Postgres row-locking semantics
- * (`FOR UPDATE SKIP LOCKED`), and concurrent-claim behaviour via Prisma's
- * connection pool.
- *
- * Prereqs:
- *   - Postgres running (project-root `docker-compose.yml`).
- *   - `sruth_test` database exists with the Prisma schema pushed.
- *     The API test setup (apps/api) already does this; see
- *     .claude/skills/test-api/SKILL.md for the bootstrap commands.
+ * Covers the UPDATE-on-claim queue model: PENDING → CLAIMED → DONE/FAILED.
+ * DONE/FAILED rows are preserved (not deleted) so operators can grep queue
+ * state and the orphan reaper can find stale CLAIMED rows.
  */
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
@@ -40,14 +33,13 @@ function cmd(sessionId: string): Prisma.InputJsonValue {
 
 describe('CommandConsumer integration (real Postgres)', { timeout: 30_000 }, () => {
   beforeAll(async () => {
-    // Fail fast with a clear message if the test DB isn't reachable.
     try {
       await prisma.$queryRaw`SELECT 1`;
     } catch (err) {
       throw new Error(
         `Cannot reach test database at ${process.env.DATABASE_URL}. ` +
           `Start Postgres (docker compose up -d postgres) and ensure the ` +
-          `sruth_test database exists with the Prisma schema pushed.\n\n` +
+          `test database exists with the Prisma schema pushed.\n\n` +
           `Original error: ${(err as Error).message}`,
       );
     }
@@ -61,7 +53,77 @@ describe('CommandConsumer integration (real Postgres)', { timeout: 30_000 }, () 
     await prisma.$disconnect();
   });
 
-  it('claims commands in FIFO order by createdAt', async () => {
+  it('claim transitions PENDING -> CLAIMED with claimedAt set', async () => {
+    await prisma.workerCommand.create({ data: { id: 'c-1', payload: cmd('s-1') } });
+
+    const consumer = new CommandConsumer(prisma, 10);
+    let midHandler: { status: string; claimedAt: Date | null } | null = null;
+    await invokeProcessNext(consumer, async () => {
+      const row = await prisma.workerCommand.findUnique({ where: { id: 'c-1' } });
+      midHandler = row ? { status: row.status, claimedAt: row.claimedAt } : null;
+    });
+
+    expect(midHandler).not.toBeNull();
+    expect(midHandler!.status).toBe('CLAIMED');
+    expect(midHandler!.claimedAt).toBeInstanceOf(Date);
+  });
+
+  it('successful handler marks the row DONE with completedAt', async () => {
+    await prisma.workerCommand.create({ data: { id: 'c-1', payload: cmd('s-1') } });
+
+    const consumer = new CommandConsumer(prisma, 10);
+    await invokeProcessNext(consumer, async () => {
+      /* success */
+    });
+
+    const row = await prisma.workerCommand.findUnique({ where: { id: 'c-1' } });
+    expect(row?.status).toBe('DONE');
+    expect(row?.completedAt).toBeInstanceOf(Date);
+    expect(row?.lastError).toBeNull();
+  });
+
+  it('completion is a no-op when row was flipped out of CLAIMED mid-handler', async () => {
+    // Regression guard for reaper/handler race: if the reaper decides the
+    // claim is stale and flips the row to FAILED while the handler is still
+    // running, a late-arriving handler completion must not overwrite that.
+    await prisma.workerCommand.create({ data: { id: 'c-1', payload: cmd('s-1') } });
+
+    const consumer = new CommandConsumer(prisma, 10);
+    await invokeProcessNext(consumer, async () => {
+      // Simulate reaper flipping the row while the handler is mid-flight.
+      await prisma.workerCommand.update({
+        where: { id: 'c-1' },
+        data: {
+          status: 'FAILED',
+          completedAt: new Date(),
+          lastError: 'orphaned: worker crash',
+        },
+      });
+    });
+
+    const row = await prisma.workerCommand.findUnique({ where: { id: 'c-1' } });
+    expect(row?.status).toBe('FAILED');
+    expect(row?.lastError).toBe('orphaned: worker crash');
+  });
+
+  it('throwing handler marks the row FAILED with lastError', async () => {
+    await prisma.workerCommand.create({ data: { id: 'c-1', payload: cmd('s-1') } });
+
+    const consumer = new CommandConsumer(prisma, 10);
+    // Silence the expected error log so test output stays clean.
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await invokeProcessNext(consumer, async () => {
+      throw new Error('simulated handler failure');
+    });
+    errSpy.mockRestore();
+
+    const row = await prisma.workerCommand.findUnique({ where: { id: 'c-1' } });
+    expect(row?.status).toBe('FAILED');
+    expect(row?.completedAt).toBeInstanceOf(Date);
+    expect(row?.lastError).toBe('simulated handler failure');
+  });
+
+  it('claims commands in FIFO order by createdAt and skips non-PENDING rows', async () => {
     const now = Date.now();
     await prisma.workerCommand.createMany({
       data: [
@@ -73,50 +135,25 @@ describe('CommandConsumer integration (real Postgres)', { timeout: 30_000 }, () 
 
     const seen: string[] = [];
     const consumer = new CommandConsumer(prisma, 10);
-    const handler = async (c: WorkerCommand) => { seen.push(c.sessionId); };
+    const handler = async (c: WorkerCommand) => {
+      seen.push(c.sessionId);
+    };
 
     await invokeProcessNext(consumer, handler);
     await invokeProcessNext(consumer, handler);
     await invokeProcessNext(consumer, handler);
-    await invokeProcessNext(consumer, handler); // empty queue — must noop
+    await invokeProcessNext(consumer, handler); // queue drained — no more PENDING
 
     expect(seen).toEqual(['s-first', 's-second', 's-third']);
-    expect(await prisma.workerCommand.count()).toBe(0);
-  });
-
-  it('discards (does not replay) a command when the handler throws', async () => {
-    // This is the regression guard for the race condition that motivated the
-    // fix. Under the previous two-step findFirst+delete design, a handler
-    // throw left the row in the queue to be replayed — which corrupted state
-    // for non-idempotent handlers like the full-session `stop` path. Under
-    // the atomic DELETE ... RETURNING design, the row is gone at claim time
-    // and a handler throw cannot trigger replay.
-    await prisma.workerCommand.create({
-      data: { id: 'c-crash', payload: cmd('s-crash') },
+    // All claimed rows were settled to DONE, not deleted.
+    const statuses = await prisma.workerCommand.findMany({
+      orderBy: { createdAt: 'asc' },
+      select: { status: true },
     });
-
-    const callLog: string[] = [];
-    const throwingHandler = async (c: WorkerCommand) => {
-      callLog.push(`throw:${c.sessionId}`);
-      throw new Error('simulated handler failure');
-    };
-    const trackingHandler = async (c: WorkerCommand) => {
-      callLog.push(`track:${c.sessionId}`);
-    };
-
-    const consumer = new CommandConsumer(prisma, 10);
-
-    await invokeProcessNext(consumer, throwingHandler);
-    await invokeProcessNext(consumer, trackingHandler);
-
-    expect(callLog).toEqual(['throw:s-crash']);
-    expect(await prisma.workerCommand.count()).toBe(0);
+    expect(statuses.map((r) => r.status)).toEqual(['DONE', 'DONE', 'DONE']);
   });
 
   it('two concurrent claims pick different rows (FOR UPDATE SKIP LOCKED)', async () => {
-    // Two workers polling simultaneously must not both claim the same row.
-    // This relies on Postgres row-locking in the subquery; the unit tests
-    // mock Prisma and cannot exercise it.
     const now = Date.now();
     await prisma.workerCommand.createMany({
       data: [
@@ -127,7 +164,9 @@ describe('CommandConsumer integration (real Postgres)', { timeout: 30_000 }, () 
 
     const seen: string[] = [];
     const consumer = new CommandConsumer(prisma, 10);
-    const handler = async (c: WorkerCommand) => { seen.push(c.sessionId); };
+    const handler = async (c: WorkerCommand) => {
+      seen.push(c.sessionId);
+    };
 
     await Promise.all([
       invokeProcessNext(consumer, handler),
@@ -135,6 +174,5 @@ describe('CommandConsumer integration (real Postgres)', { timeout: 30_000 }, () 
     ]);
 
     expect(seen.sort()).toEqual(['s-a', 's-b']);
-    expect(await prisma.workerCommand.count()).toBe(0);
   });
 });

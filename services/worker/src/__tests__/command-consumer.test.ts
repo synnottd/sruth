@@ -4,17 +4,17 @@ import type { WorkerCommand } from '@sruth/shared';
 import { CommandConsumer } from '../command-consumer.js';
 
 /**
- * Minimal shape of the Prisma surface CommandConsumer actually touches.
- * PrismaClient is dependency-injected via the constructor, so we don't need
- * module-level mocking — a plain object cast as `unknown as PrismaClient`
- * is enough.
+ * Unit tests for CommandConsumer's orchestration: claim → handler → settle.
  *
- * The consumer uses `$queryRaw` with an atomic DELETE ... RETURNING so that
- * claiming a command and removing it from the queue happen in one statement.
- * These tests drive `processNext` directly to avoid the polling timer.
+ * The integration tests cover the SQL itself (status transitions, FIFO,
+ * FOR UPDATE SKIP LOCKED). These tests drive `processNext` with a mocked
+ * Prisma surface to verify the consumer's externally-visible behaviour:
+ * which handler was invoked with which payload, and that a settle update
+ * happens after each handler run.
  */
 type MockPrisma = {
   $queryRaw: ReturnType<typeof vi.fn>;
+  $executeRaw: ReturnType<typeof vi.fn>;
 };
 
 function invokeProcessNext(
@@ -32,21 +32,22 @@ describe('CommandConsumer', () => {
   let mockPrisma: MockPrisma;
 
   beforeEach(() => {
-    mockPrisma = { $queryRaw: vi.fn() };
+    mockPrisma = {
+      $queryRaw: vi.fn(),
+      $executeRaw: vi.fn().mockResolvedValue(1),
+    };
   });
 
-  it('hands each command to the handler at most once across repeated polls', async () => {
-    // The atomic claim returns the row on the first poll and leaves the
-    // queue empty afterwards. Two poll cycles should therefore produce
-    // exactly one handler invocation — the command cannot be replayed.
+  it('hands each claimed command to the handler exactly once', async () => {
     const command: WorkerCommand = {
       type: 'stop',
       userId: 'user-1',
       sessionId: 'session-1',
     };
 
+    // First poll claims the row, second finds the queue empty.
     mockPrisma.$queryRaw
-      .mockResolvedValueOnce([{ payload: command }])
+      .mockResolvedValueOnce([{ id: 'c-1', payload: command }])
       .mockResolvedValue([]);
 
     const handler = vi
@@ -65,49 +66,51 @@ describe('CommandConsumer', () => {
     expect(handler).toHaveBeenCalledWith(command);
   });
 
-  it('does not replay a command when the handler throws (at-most-once)', async () => {
-    // The row is atomically removed at claim time, so a handler failure
-    // discards the command rather than triggering an infinite retry loop.
-    // This is a deliberate trade-off: several handlers are not idempotent,
-    // so replay can corrupt DB state. Operators should watch logs for the
-    // discard warning.
+  it('settles the row with a DONE update after the handler resolves', async () => {
     const command: WorkerCommand = {
       type: 'stop',
       userId: 'user-1',
       sessionId: 'session-1',
     };
 
-    mockPrisma.$queryRaw
-      .mockResolvedValueOnce([{ payload: command }])
-      .mockResolvedValue([]);
-
-    const handler = vi
-      .fn<(c: WorkerCommand) => Promise<void>>()
-      .mockRejectedValue(new Error('handler blew up'));
+    mockPrisma.$queryRaw.mockResolvedValueOnce([{ id: 'c-1', payload: command }]);
 
     const consumer = new CommandConsumer(
       mockPrisma as unknown as PrismaClient,
       10,
     );
 
-    // Silence the expected error log so the test output stays clean.
-    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await invokeProcessNext(consumer, async () => {
+      /* success */
+    });
 
-    await invokeProcessNext(consumer, handler);
-    await invokeProcessNext(consumer, handler);
-
-    expect(handler).toHaveBeenCalledTimes(1);
-    expect(errSpy).toHaveBeenCalledWith(
-      '[CommandConsumer] Handler failed — command discarded:',
-      'stop',
-      'session-1',
-      expect.any(Error),
-    );
-
-    errSpy.mockRestore();
+    expect(mockPrisma.$executeRaw).toHaveBeenCalledTimes(1);
   });
 
-  it('does nothing when the queue is empty', async () => {
+  it('settles the row with a FAILED update when the handler throws', async () => {
+    const command: WorkerCommand = {
+      type: 'stop',
+      userId: 'user-1',
+      sessionId: 'session-1',
+    };
+
+    mockPrisma.$queryRaw.mockResolvedValueOnce([{ id: 'c-1', payload: command }]);
+
+    const consumer = new CommandConsumer(
+      mockPrisma as unknown as PrismaClient,
+      10,
+    );
+
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await invokeProcessNext(consumer, async () => {
+      throw new Error('boom');
+    });
+    errSpy.mockRestore();
+
+    expect(mockPrisma.$executeRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it('does nothing when the queue has no PENDING rows', async () => {
     mockPrisma.$queryRaw.mockResolvedValue([]);
 
     const handler = vi
@@ -122,6 +125,6 @@ describe('CommandConsumer', () => {
     await invokeProcessNext(consumer, handler);
 
     expect(handler).not.toHaveBeenCalled();
-    expect(mockPrisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.$executeRaw).not.toHaveBeenCalled();
   });
 });

@@ -6,6 +6,9 @@ export default defineConfig({
     exclude: ['dist/**', 'node_modules/**'],
     testTimeout: 120_000,
     hookTimeout: 120_000,
+    // DB-backed integration suites share the same test database and TRUNCATE
+    // between tests; running files in parallel would race those truncations.
+    fileParallelism: false,
     env: {
       // Shared by DB-backed integration tests. Matches the API test convention
       // (see apps/api/vitest.config.ts) so both suites target the same dedicated

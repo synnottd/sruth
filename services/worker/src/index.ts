@@ -7,6 +7,7 @@ import { HealthReporter } from './health-reporter.js';
 import { LogCapture } from './log-capture.js';
 import { WorkerHttpServer } from './http.js';
 import { config } from './config.js';
+import { start as startReaper, type Reaper } from './orphan-reaper.js';
 import { createStatusHandler, type StatusHandler } from './status-handler.js';
 
 const adapter = new PrismaPg(config.databaseUrl);
@@ -18,6 +19,7 @@ let health: HealthReporter;
 let logs: LogCapture;
 let http: WorkerHttpServer;
 let statusHandler: StatusHandler;
+let reaper: Reaper;
 
 async function handleStart(sessionId: string): Promise<void> {
   const session = await prisma.streamSession.findUnique({
@@ -208,6 +210,7 @@ async function shutdown(signal: string): Promise<void> {
   hardTimeout.unref();
 
   try {
+    reaper?.stop();
     await consumer.stop();
     await http.stop();
     health.stop();
@@ -293,6 +296,12 @@ async function main(): Promise<void> {
 
   // Recover active sessions before starting consumer
   await recoverSessions();
+
+  // Begin the orphan reap loop. The startup sweep is fire-and-forget and
+  // races with consumer.start(), but that's harmless: the reaper's
+  // `claimedAt < cutoff` guard means a fresh claim made by the consumer
+  // can never match the orphan window.
+  reaper = startReaper(prisma);
 
   process.on('SIGTERM', () => { shutdown('SIGTERM').catch(() => process.exit(1)); });
   process.on('SIGINT', () => { shutdown('SIGINT').catch(() => process.exit(1)); });

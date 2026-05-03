@@ -297,9 +297,10 @@ async function main(): Promise<void> {
   // Recover active sessions before starting consumer
   await recoverSessions();
 
-  // Sweep orphaned command claims left by any previous crash, then begin
-  // the periodic reap loop. Runs before consumer.start() so a fresh claim
-  // can't be mistaken for an orphan.
+  // Begin the orphan reap loop. The startup sweep is fire-and-forget and
+  // races with consumer.start(), but that's harmless: the reaper's
+  // `claimedAt < cutoff` guard means a fresh claim made by the consumer
+  // can never match the orphan window.
   reaper = startReaper(prisma);
 
   process.on('SIGTERM', () => { shutdown('SIGTERM').catch(() => process.exit(1)); });

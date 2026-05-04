@@ -2,17 +2,19 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useOutputs, useDeleteOutput } from "@/lib/api/hooks";
+import { useOutputs, useDeleteOutput, useActiveStream } from "@/lib/api/hooks";
 import { useToast } from "@/components/toast";
-import { StatusBadge } from "@/components/status-badge";
+import { OutputToggle } from "@/components/output-toggle";
 import type { Output } from "@/lib/api/types";
 
 function OutputCard({
   output,
   onDelete,
+  streamIsLive,
 }: {
   output: Output;
   onDelete: (id: string) => void;
+  streamIsLive: boolean;
 }) {
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
@@ -21,15 +23,9 @@ function OutputCard({
           <h3 className="font-medium">{output.name}</h3>
           <p className="text-sm text-zinc-400">{output.platform}</p>
         </div>
-        <StatusBadge label={output.enabled ? "Enabled" : "Disabled"} />
+        <OutputToggle output={output} confirmOnDisable={streamIsLive} />
       </div>
       <div className="mt-3 flex items-center gap-2">
-        <Link
-          href={`/outputs/${output.id}/edit`}
-          className="rounded-md bg-zinc-800 px-3 py-1 text-sm text-zinc-300 hover:bg-zinc-700"
-        >
-          Edit
-        </Link>
         <button
           type="button"
           onClick={() => onDelete(output.id)}
@@ -76,6 +72,7 @@ function ConfirmDialog({
 
 export function OutputsList() {
   const { data: outputs, isLoading } = useOutputs();
+  const { data: activeStream } = useActiveStream();
   const deleteOutput = useDeleteOutput();
   const { toast } = useToast();
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -118,6 +115,7 @@ export function OutputsList() {
               key={output.id}
               output={output}
               onDelete={setDeletingId}
+              streamIsLive={activeStream != null}
             />
           ))}
         </div>

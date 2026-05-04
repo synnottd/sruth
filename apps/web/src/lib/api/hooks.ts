@@ -37,6 +37,18 @@ export function useDeleteOutput() {
   });
 }
 
+export function useToggleOutput() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
+      apiClient.put<Output>(`/outputs/${id}`, { enabled }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["outputs"] });
+      queryClient.invalidateQueries({ queryKey: ["streams", "active"] });
+    },
+  });
+}
+
 export function useStreamInfo() {
   return useQuery({
     queryKey: ["stream"],

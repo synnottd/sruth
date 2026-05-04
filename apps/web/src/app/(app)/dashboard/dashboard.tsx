@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useOutputs, useActiveStream } from "@/lib/api/hooks";
 import { StatusBadge } from "@/components/status-badge";
+import { OutputToggle } from "@/components/output-toggle";
 import type { Output, StreamSession } from "@/lib/api/types";
 
 function HeroBanner({ activeStream }: { activeStream: StreamSession | null }) {
@@ -41,7 +42,15 @@ function HeroBanner({ activeStream }: { activeStream: StreamSession | null }) {
   );
 }
 
-function OutputCard({ output, outputSession }: { output: Output; outputSession?: { status: string; lastError: string | null } }) {
+function OutputCard({
+  output,
+  outputSession,
+  streamIsLive,
+}: {
+  output: Output;
+  outputSession?: { status: string; lastError: string | null; reconnectCount: number };
+  streamIsLive: boolean;
+}) {
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
       <div className="flex items-center justify-between">
@@ -49,7 +58,15 @@ function OutputCard({ output, outputSession }: { output: Output; outputSession?:
           <h3 className="font-medium">{output.name}</h3>
           <p className="text-sm text-zinc-400">{output.platform}</p>
         </div>
-        {outputSession && <StatusBadge label={outputSession.status} />}
+        <div className="flex items-center gap-2">
+          {outputSession && (
+            <StatusBadge
+              status={outputSession.status}
+              reconnectCount={outputSession.reconnectCount}
+            />
+          )}
+          <OutputToggle output={output} confirmOnDisable={streamIsLive} />
+        </div>
       </div>
       {outputSession?.lastError && (
         <p className="mt-2 text-sm text-red-400">{outputSession.lastError}</p>
@@ -79,10 +96,14 @@ export function Dashboard() {
   }
 
   // Build a lookup from outputId to outputSession for the active stream
-  const outputSessionMap = new Map<string, { status: string; lastError: string | null }>();
+  const outputSessionMap = new Map<string, { status: string; lastError: string | null; reconnectCount: number }>();
   if (activeStream) {
     for (const os of activeStream.outputSessions) {
-      outputSessionMap.set(os.outputId, { status: os.status, lastError: os.lastError });
+      outputSessionMap.set(os.outputId, {
+        status: os.status,
+        lastError: os.lastError,
+        reconnectCount: os.reconnectCount,
+      });
     }
   }
 
@@ -97,6 +118,7 @@ export function Dashboard() {
               key={output.id}
               output={output}
               outputSession={outputSessionMap.get(output.id)}
+              streamIsLive={activeStream != null}
             />
           ))}
         </div>

@@ -87,13 +87,15 @@ describe("OutputsList", () => {
     expect(mockDelete).toHaveBeenCalledWith("/outputs/1");
   });
 
-  it("shows enabled/disabled badge", async () => {
+  it("renders a toggle switch reflecting enabled state", async () => {
     mockGet.mockResolvedValue(sampleOutputs);
 
     render(<OutputsList />, { wrapper: createTestWrapper() });
 
     await screen.findByText("My Twitch");
-    expect(screen.getByText("Enabled")).toBeInTheDocument();
-    expect(screen.getByText("Disabled")).toBeInTheDocument();
+    const toggles = screen.getAllByRole("checkbox", { name: /enabled/i });
+    expect(toggles).toHaveLength(2);
+    expect(toggles[0]).toBeChecked();
+    expect(toggles[1]).not.toBeChecked();
   });
 });

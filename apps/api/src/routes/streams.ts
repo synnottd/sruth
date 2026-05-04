@@ -1,5 +1,4 @@
 import type { FastifyInstance } from 'fastify';
-import { sendCommand } from '../lib/commands.js';
 
 const WORKER_URL = process.env.WORKER_URL ?? 'http://localhost:4000';
 const WORKER_CONNECT_TIMEOUT_MS = 5_000;
@@ -21,36 +20,6 @@ export default async function streamsRoutes(fastify: FastifyInstance) {
 
     return sessions;
   });
-
-  fastify.post<{ Params: { outputSessionId: string } }>(
-    '/streams/:outputSessionId/stop',
-    async (request, reply) => {
-      const userId = request.user.sub;
-      const { outputSessionId } = request.params;
-
-      const outputSession = await fastify.prisma.outputSession.findUnique({
-        where: { id: outputSessionId },
-        include: { session: true },
-      });
-
-      if (!outputSession || outputSession.session.userId !== userId) {
-        return reply.code(404).send({
-          statusCode: 404,
-          error: 'OUTPUT_SESSION_NOT_FOUND',
-          message: 'Output session not found',
-        });
-      }
-
-      await sendCommand(fastify.prisma, {
-        type: 'stop',
-        userId,
-        sessionId: outputSession.sessionId,
-        outputSessionId,
-      });
-
-      return { status: 'stopped' };
-    },
-  );
 
   // SSE proxy — pipe worker's SSE stream to the browser with auth
   fastify.get('/streams/live', async (request, reply) => {

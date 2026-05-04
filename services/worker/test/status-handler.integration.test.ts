@@ -84,6 +84,66 @@ describe('status-handler integration (real Postgres)', { timeout: 30_000 }, () =
     expect(ss?.status).toBe('LIVE');
   });
 
+  it('persists a RETRYING status change', async () => {
+    const { sessionId, outputSessionId } = await seed();
+
+    const handler = createStatusHandler({
+      prisma,
+      onSse: () => {},
+      maxRetries: 3,
+      retryDelayMs: 10,
+    });
+
+    handler.onStatusChange(sessionId, outputSessionId, 'retrying', null);
+    await handler.flush();
+
+    const os = await prisma.outputSession.findUnique({ where: { id: outputSessionId } });
+    expect(os?.status).toBe('RETRYING');
+  });
+
+  it('increments reconnectCount on each retrying event', async () => {
+    const { sessionId, outputSessionId } = await seed();
+
+    const handler = createStatusHandler({
+      prisma,
+      onSse: () => {},
+      maxRetries: 3,
+      retryDelayMs: 10,
+    });
+
+    handler.onStatusChange(sessionId, outputSessionId, 'retrying', null);
+    handler.onStatusChange(sessionId, outputSessionId, 'retrying', null);
+    handler.onStatusChange(sessionId, outputSessionId, 'retrying', null);
+    await handler.flush();
+
+    const os = await prisma.outputSession.findUnique({ where: { id: outputSessionId } });
+    expect(os?.reconnectCount).toBe(3);
+  });
+
+  it('resets reconnectCount to 0 on live', async () => {
+    const { sessionId, outputSessionId } = await seed();
+
+    // Seed some retries first
+    await prisma.outputSession.update({
+      where: { id: outputSessionId },
+      data: { reconnectCount: 5, status: 'RETRYING' },
+    });
+
+    const handler = createStatusHandler({
+      prisma,
+      onSse: () => {},
+      maxRetries: 3,
+      retryDelayMs: 10,
+    });
+
+    handler.onStatusChange(sessionId, outputSessionId, 'live', null);
+    await handler.flush();
+
+    const os = await prisma.outputSession.findUnique({ where: { id: outputSessionId } });
+    expect(os?.status).toBe('LIVE');
+    expect(os?.reconnectCount).toBe(0);
+  });
+
   it('recovers from a transient DB failure and persists the final status', async () => {
     // Regression guard: without retry, this test fails because the first
     // rejection is swallowed by `.catch(log)` and the DB row is never updated.

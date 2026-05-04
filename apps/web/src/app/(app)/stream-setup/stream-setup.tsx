@@ -43,12 +43,26 @@ export function StreamSetup() {
 
       <div className="space-y-4">
         <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
-          <p className="text-sm font-medium text-zinc-400">Ingest URL</p>
+          <p className="text-sm font-medium text-zinc-400">Ingest URL (RTMP)</p>
           <div className="mt-1 flex items-center gap-2">
             <code className="text-sm">{streamInfo.ingestUrl}</code>
             <button
               type="button"
               onClick={() => navigator.clipboard.writeText(streamInfo.ingestUrl)}
+              className="rounded-md bg-zinc-800 px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-700"
+            >
+              Copy
+            </button>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+          <p className="text-sm font-medium text-zinc-400">Ingest URL (SRT)</p>
+          <div className="mt-1 flex items-center gap-2">
+            <code className="break-all text-sm">{streamInfo.srtIngestUrl}</code>
+            <button
+              type="button"
+              onClick={() => navigator.clipboard.writeText(streamInfo.srtIngestUrl)}
               className="rounded-md bg-zinc-800 px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-700"
             >
               Copy

@@ -1,6 +1,6 @@
-export type Platform = "TWITCH" | "YOUTUBE" | "FACEBOOK" | "CUSTOM";
+export type Platform = "TWITCH" | "YOUTUBE" | "FACEBOOK" | "KICK" | "CUSTOM";
 
-export type OutputSessionStatus = "STARTING" | "LIVE" | "ERROR" | "STOPPED";
+export type OutputSessionStatus = "STARTING" | "LIVE" | "RETRYING" | "ERROR" | "STOPPED";
 export type StreamSessionStatus = "STARTING" | "LIVE" | "ERROR" | "STOPPED";
 
 export interface Output {
@@ -40,4 +40,5 @@ export interface StreamSession {
 export interface StreamInfo {
   streamKey: string;
   ingestUrl: string;
+  srtIngestUrl: string;
 }

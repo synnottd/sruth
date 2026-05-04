@@ -9,9 +9,13 @@ function fakePrisma(overrides: {
 } = {}): { prisma: PrismaMock; outputUpdate: ReturnType<typeof vi.fn>; sessionUpdateMany: ReturnType<typeof vi.fn> } {
   const outputUpdate = vi.fn(overrides.outputUpdate ?? (async () => ({})));
   const sessionUpdateMany = vi.fn(overrides.sessionUpdateMany ?? (async () => ({ count: 1 })));
+  // `$transaction([...])` resolves the array of Prisma promises — the fake ones
+  // are already plain Promises, so await them in order.
+  const $transaction = vi.fn((ops: Promise<unknown>[]) => Promise.all(ops));
   const prisma = {
     outputSession: { update: outputUpdate },
     streamSession: { updateMany: sessionUpdateMany },
+    $transaction,
   } as unknown as PrismaMock;
   return { prisma, outputUpdate, sessionUpdateMany };
 }
@@ -72,7 +76,7 @@ describe('createStatusHandler', () => {
     expect(sessionUpdateMany).not.toHaveBeenCalled();
   });
 
-  it('does not write to DB for transient statuses (starting, retrying, stopped)', async () => {
+  it('does not write to DB for starting or stopped statuses', async () => {
     const { prisma, outputUpdate, sessionUpdateMany } = fakePrisma();
     const onSse = vi.fn();
     const handler = createStatusHandler({
@@ -83,7 +87,6 @@ describe('createStatusHandler', () => {
     });
 
     handler.onStatusChange('s', 'o', 'starting', null);
-    handler.onStatusChange('s', 'o', 'retrying', null);
     handler.onStatusChange('s', 'o', 'stopped', null);
     await vi.runAllTimersAsync();
     await handler.flush();
@@ -91,7 +94,53 @@ describe('createStatusHandler', () => {
     expect(outputUpdate).not.toHaveBeenCalled();
     expect(sessionUpdateMany).not.toHaveBeenCalled();
     // SSE is still pushed for every status change
-    expect(onSse).toHaveBeenCalledTimes(3);
+    expect(onSse).toHaveBeenCalledTimes(2);
+  });
+
+  it('persists retrying status and increments reconnectCount', async () => {
+    const { prisma, outputUpdate, sessionUpdateMany } = fakePrisma();
+    const handler = createStatusHandler({
+      prisma,
+      onSse: vi.fn(),
+      maxRetries: 3,
+      retryDelayMs: 10,
+    });
+
+    handler.onStatusChange('sess-1', 'out-1', 'retrying', null);
+    await vi.runAllTimersAsync();
+    await handler.flush();
+
+    expect(outputUpdate).toHaveBeenCalledWith({
+      where: { id: 'out-1' },
+      data: expect.objectContaining({
+        status: 'RETRYING',
+        reconnectCount: { increment: 1 },
+      }),
+    });
+    // retrying should NOT touch StreamSession
+    expect(sessionUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it('resets reconnectCount on live status', async () => {
+    const { prisma, outputUpdate } = fakePrisma();
+    const handler = createStatusHandler({
+      prisma,
+      onSse: vi.fn(),
+      maxRetries: 3,
+      retryDelayMs: 10,
+    });
+
+    handler.onStatusChange('sess-1', 'out-1', 'live', null);
+    await vi.runAllTimersAsync();
+    await handler.flush();
+
+    expect(outputUpdate).toHaveBeenCalledWith({
+      where: { id: 'out-1' },
+      data: expect.objectContaining({
+        status: 'LIVE',
+        reconnectCount: 0,
+      }),
+    });
   });
 
   it('retries DB update on transient failure and eventually persists', async () => {

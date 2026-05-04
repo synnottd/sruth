@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import crypto from 'node:crypto';
 
 const INGEST_URL_BASE = process.env.INGEST_URL_BASE ?? 'rtmp://localhost:1935/live';
+const INGEST_SRT_URL_BASE = process.env.INGEST_SRT_URL_BASE ?? 'srt://localhost:9999';
 
 export default async function streamRoutes(fastify: FastifyInstance) {
   fastify.addHook('onRequest', fastify.authenticate);
@@ -19,6 +20,7 @@ export default async function streamRoutes(fastify: FastifyInstance) {
     return {
       streamKey: user.streamKey,
       ingestUrl: `${INGEST_URL_BASE}/${user.streamKey}`,
+      srtIngestUrl: `${INGEST_SRT_URL_BASE}?streamid=publish:${user.streamKey}`,
     };
   });
 

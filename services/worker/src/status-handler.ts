@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import type { OutputStatus } from './ffmpeg-manager.js';
 
 export interface StatusHandlerDeps {
@@ -37,8 +37,9 @@ export function createStatusHandler(deps: StatusHandlerDeps): StatusHandler {
   const queue: PendingUpdate[] = [];
   let draining: Promise<void> | null = null;
 
-  function dbStatusFor(status: OutputStatus): 'LIVE' | 'ERROR' | null {
+  function dbStatusFor(status: OutputStatus): 'LIVE' | 'RETRYING' | 'ERROR' | null {
     if (status === 'live') return 'LIVE';
+    if (status === 'retrying') return 'RETRYING';
     if (status === 'error') return 'ERROR';
     return null;
   }
@@ -51,18 +52,25 @@ export function createStatusHandler(deps: StatusHandlerDeps): StatusHandler {
     while (true) {
       attempt++;
       try {
-        await prisma.outputSession.update({
-          where: { id: update.outputSessionId },
-          data: {
-            status: dbStatus,
-            lastError: update.error,
-          },
-        });
+        const data: Prisma.OutputSessionUpdateInput = {
+          status: dbStatus,
+          lastError: update.error,
+        };
+        if (update.status === 'retrying') {
+          data.reconnectCount = { increment: 1 };
+        } else if (update.status === 'live') {
+          data.reconnectCount = 0;
+        }
         if (update.status === 'live') {
-          await prisma.streamSession.updateMany({
-            where: { id: update.sessionId, status: 'STARTING' },
-            data: { status: 'LIVE' },
-          });
+          await prisma.$transaction([
+            prisma.outputSession.update({ where: { id: update.outputSessionId }, data }),
+            prisma.streamSession.updateMany({
+              where: { id: update.sessionId, status: 'STARTING' },
+              data: { status: 'LIVE' },
+            }),
+          ]);
+        } else {
+          await prisma.outputSession.update({ where: { id: update.outputSessionId }, data });
         }
         return;
       } catch (err) {

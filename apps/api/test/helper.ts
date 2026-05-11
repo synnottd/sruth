@@ -32,18 +32,38 @@ export async function closeApp(): Promise<void> {
   }
 }
 
-/** Register a user and return tokens + stream key */
+/**
+ * Register a user and return tokens + stream key.
+ *
+ * Pass `admin: true` to append the email to `process.env.ADMIN_EMAILS` so the
+ * registered user passes the `authenticateAdmin` decorator. Tests are
+ * responsible for restoring ADMIN_EMAILS afterwards.
+ */
 export async function registerUser(
-  overrides: { email?: string; password?: string } = {},
+  overrides: { email?: string; password?: string; admin?: boolean } = {},
 ) {
+  const email = overrides.email ?? 'test@example.com';
+  if (overrides.admin) {
+    const list = (process.env.ADMIN_EMAILS ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!list.includes(email)) list.push(email);
+    process.env.ADMIN_EMAILS = list.join(',');
+  }
   const a = await getApp();
   const res = await a.inject({
     method: 'POST',
     url: '/auth/register',
     payload: {
-      email: overrides.email ?? 'test@example.com',
+      email,
       password: overrides.password ?? 'password123',
     },
   });
-  return { response: res, body: JSON.parse(res.body) };
+  const accessCookie = res.cookies.find((c: any) => c.name === 'accessToken');
+  return {
+    response: res,
+    body: JSON.parse(res.body),
+    accessToken: accessCookie?.value ?? '',
+  };
 }

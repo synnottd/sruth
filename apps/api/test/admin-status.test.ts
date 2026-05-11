@@ -1,12 +1,13 @@
-import { describe, it, expect, afterAll, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterAll, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { getApp, closeApp, registerUser } from './helper.js';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 
 /**
- * End-to-end tests for the /admin/status/snapshot route. These exercise auth
- * gating, the three-way composition (queue / sessions / MediaMTX), and the
- * publisher↔user email join. MediaMTX HTTP is mocked by stubbing globalThis.fetch.
+ * End-to-end tests for the /admin/status/snapshot and /admin/status/stream
+ * routes. These exercise auth gating, the three-way composition (queue /
+ * sessions / MediaMTX), and the publisher↔user email join. MediaMTX HTTP is
+ * mocked by stubbing globalThis.fetch.
  */
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
@@ -15,12 +16,7 @@ const prisma = new PrismaClient({ adapter });
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_ADMIN_EMAILS = process.env.ADMIN_EMAILS;
 
-async function setupAdminUser() {
-  process.env.ADMIN_EMAILS = 'admin-dash@example.com';
-  const { response } = await registerUser({ email: 'admin-dash@example.com' });
-  const accessCookie = response.cookies.find((c: any) => c.name === 'accessToken');
-  return accessCookie!.value;
-}
+const ADMIN_EMAIL = 'admin-dash@example.com';
 
 afterAll(async () => {
   await closeApp();
@@ -54,24 +50,23 @@ describe('GET /admin/status/snapshot — auth', () => {
 
   it('returns 403 for a valid JWT whose email is not an admin', async () => {
     delete process.env.ADMIN_EMAILS;
-    const { response } = await registerUser({ email: 'not-an-admin@example.com' });
-    const accessCookie = response.cookies.find((c: any) => c.name === 'accessToken');
+    const { accessToken } = await registerUser({ email: 'not-an-admin@example.com' });
     const app = await getApp();
     const res = await app.inject({
       method: 'GET',
       url: '/admin/status/snapshot',
-      cookies: { accessToken: accessCookie!.value },
+      cookies: { accessToken },
     });
     expect(res.statusCode).toBe(403);
   });
 
   it('returns 200 for an admin', async () => {
-    const token = await setupAdminUser();
+    const { accessToken } = await registerUser({ email: ADMIN_EMAIL, admin: true });
     const app = await getApp();
     const res = await app.inject({
       method: 'GET',
       url: '/admin/status/snapshot',
-      cookies: { accessToken: token },
+      cookies: { accessToken },
     });
     expect(res.statusCode).toBe(200);
   });
@@ -79,12 +74,12 @@ describe('GET /admin/status/snapshot — auth', () => {
 
 describe('GET /admin/status/snapshot — shape', () => {
   it('returns the full snapshot envelope with generatedAt and empty collections when the DB is empty', async () => {
-    const token = await setupAdminUser();
+    const { accessToken } = await registerUser({ email: ADMIN_EMAIL, admin: true });
     const app = await getApp();
     const res = await app.inject({
       method: 'GET',
       url: '/admin/status/snapshot',
-      cookies: { accessToken: token },
+      cookies: { accessToken },
     });
     const body = JSON.parse(res.body);
 
@@ -106,7 +101,7 @@ describe('GET /admin/status/snapshot — shape', () => {
   });
 
   it('counts queue rows by status and reports oldestPendingAgeMs', async () => {
-    const token = await setupAdminUser();
+    const { accessToken } = await registerUser({ email: ADMIN_EMAIL, admin: true });
 
     const now = Date.now();
     const oldPendingCreatedAt = new Date(now - 30_000);
@@ -144,7 +139,7 @@ describe('GET /admin/status/snapshot — shape', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/admin/status/snapshot',
-      cookies: { accessToken: token },
+      cookies: { accessToken },
     });
     const body = JSON.parse(res.body);
 
@@ -157,7 +152,7 @@ describe('GET /admin/status/snapshot — shape', () => {
   });
 
   it('returns the latest ~10 failures in recentFailures, newest-first, with payload fields lifted', async () => {
-    const token = await setupAdminUser();
+    const { accessToken } = await registerUser({ email: ADMIN_EMAIL, admin: true });
 
     // Seed 12 failures; we expect the 10 most recent by completedAt desc.
     const base = Date.now();
@@ -173,7 +168,7 @@ describe('GET /admin/status/snapshot — shape', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/admin/status/snapshot',
-      cookies: { accessToken: token },
+      cookies: { accessToken },
     });
     const body = JSON.parse(res.body);
 
@@ -187,7 +182,7 @@ describe('GET /admin/status/snapshot — shape', () => {
   });
 
   it('includes active sessions with user email, status filter, and nested outputs', async () => {
-    const token = await setupAdminUser();
+    const { accessToken } = await registerUser({ email: ADMIN_EMAIL, admin: true });
     // An extra, non-admin user who owns the session we'll assert on.
     await registerUser({ email: 'session-owner@example.com' });
     const owner = await prisma.user.findUniqueOrThrow({
@@ -224,7 +219,7 @@ describe('GET /admin/status/snapshot — shape', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/admin/status/snapshot',
-      cookies: { accessToken: token },
+      cookies: { accessToken },
     });
     const body = JSON.parse(res.body);
 
@@ -242,12 +237,12 @@ describe('GET /admin/status/snapshot — shape', () => {
   });
 
   it('joins mediamtx publishers to user emails by streamKey, leaving unknown keys as null', async () => {
-    const token = await setupAdminUser();
+    const { accessToken } = await registerUser({ email: ADMIN_EMAIL, admin: true });
 
     // Admin user already created with a known streamKey. Give the publisher
     // list one row that matches it and one that's an orphan.
     const admin = await prisma.user.findUniqueOrThrow({
-      where: { email: 'admin-dash@example.com' },
+      where: { email: ADMIN_EMAIL },
     });
     const now = new Date().toISOString();
     globalThis.fetch = vi.fn().mockResolvedValue({
@@ -277,7 +272,7 @@ describe('GET /admin/status/snapshot — shape', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/admin/status/snapshot',
-      cookies: { accessToken: token },
+      cookies: { accessToken },
     });
     const body = JSON.parse(res.body);
 
@@ -288,7 +283,7 @@ describe('GET /admin/status/snapshot — shape', () => {
     const admins = body.mediamtx.publishers.find(
       (p: any) => p.streamKey === admin.streamKey,
     );
-    expect(admins.userEmail).toBe('admin-dash@example.com');
+    expect(admins.userEmail).toBe(ADMIN_EMAIL);
     expect(admins.protocol).toBe('rtmp');
 
     const orphan = body.mediamtx.publishers.find(
@@ -299,7 +294,7 @@ describe('GET /admin/status/snapshot — shape', () => {
   });
 
   it('surfaces mediamtx.reachable=false when the MediaMTX fetch fails', async () => {
-    const token = await setupAdminUser();
+    const { accessToken } = await registerUser({ email: ADMIN_EMAIL, admin: true });
     globalThis.fetch = vi
       .fn()
       .mockRejectedValue(new Error('ECONNREFUSED')) as unknown as typeof fetch;
@@ -308,12 +303,81 @@ describe('GET /admin/status/snapshot — shape', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/admin/status/snapshot',
-      cookies: { accessToken: token },
+      cookies: { accessToken },
     });
     const body = JSON.parse(res.body);
 
     expect(body.mediamtx.reachable).toBe(false);
     expect(body.mediamtx.publishers).toEqual([]);
     expect(body.mediamtx.byProtocol).toEqual({ rtmp: 0, srt: 0 });
+  });
+});
+
+/**
+ * SSE tests need a real listening socket — `app.inject` resolves once the
+ * handler returns, which doesn't model the long-lived stream semantics we
+ * care about (initial chunk delivery, write-after-close behaviour). We start
+ * the shared app on a random loopback port and use `ORIGINAL_FETCH` so the
+ * test client bypasses the globalThis.fetch mock that's in place for the
+ * server-side MediaMTX call.
+ */
+describe('GET /admin/status/stream — SSE', () => {
+  let baseUrl: string;
+
+  beforeAll(async () => {
+    const app = await getApp();
+    if (!app.server.listening) {
+      await app.listen({ port: 0, host: '127.0.0.1' });
+    }
+    const addr = app.server.address();
+    if (!addr || typeof addr === 'string') throw new Error('no port assigned');
+    baseUrl = `http://127.0.0.1:${addr.port}`;
+  });
+
+  it('returns 401 without an access token', async () => {
+    const res = await ORIGINAL_FETCH(`${baseUrl}/admin/status/stream`);
+    expect(res.status).toBe(401);
+    await res.text();
+  });
+
+  it('returns 403 for a valid JWT whose email is not an admin', async () => {
+    delete process.env.ADMIN_EMAILS;
+    const { accessToken } = await registerUser({ email: 'sse-not-admin@example.com' });
+    const res = await ORIGINAL_FETCH(`${baseUrl}/admin/status/stream`, {
+      headers: { cookie: `accessToken=${accessToken}` },
+    });
+    expect(res.status).toBe(403);
+    await res.text();
+  });
+
+  it('delivers an initial snapshot envelope to an admin and cleans up on client abort', async () => {
+    const { accessToken } = await registerUser({ email: ADMIN_EMAIL, admin: true });
+    const controller = new AbortController();
+    const res = await ORIGINAL_FETCH(`${baseUrl}/admin/status/stream`, {
+      headers: { cookie: `accessToken=${accessToken}` },
+      signal: controller.signal,
+    });
+    try {
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toContain('text/event-stream');
+
+      const reader = res.body!.getReader();
+      const { value } = await reader.read();
+      const chunk = new TextDecoder().decode(value);
+
+      expect(chunk.startsWith('data: ')).toBe(true);
+      const json = JSON.parse(chunk.slice('data: '.length).trim());
+      expect(json).toMatchObject({
+        queue: expect.any(Object),
+        sessions: expect.any(Array),
+        mediamtx: expect.objectContaining({ reachable: expect.any(Boolean) }),
+        generatedAt: expect.any(String),
+      });
+    } finally {
+      // Aborting the client triggers the server's `close` listener, which
+      // calls cleanup(). If cleanup leaked, the test runner would hang on the
+      // 5 s SSE interval; the test suite finishing is itself the assertion.
+      controller.abort();
+    }
   });
 });

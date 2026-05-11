@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { ExtendedPrismaClient } from '../../plugins/prisma.js';
 import { fetchPublishers, type Publisher } from '../../lib/mediamtx.js';
+import { isAdmin } from '../../plugins/auth.js';
 
 interface QueueFailure {
   id: string;
@@ -58,6 +59,7 @@ async function composeQueue(prisma: ExtendedPrismaClient): Promise<QueueSnapshot
   const [counts, oldestPending, failures] = await Promise.all([
     prisma.workerCommand.groupBy({
       by: ['status'],
+      where: { status: { in: ['PENDING', 'CLAIMED', 'FAILED'] } },
       _count: { _all: true },
     }),
     prisma.workerCommand.findFirst({
@@ -187,23 +189,52 @@ export default async function adminStatusRoutes(fastify: FastifyInstance) {
         Connection: 'keep-alive',
       });
 
+      // `closed` guards against double-cleanup (close event + write failure)
+      // and against the timer firing in the gap between cleanup and removal.
+      let closed = false;
+      let timer: NodeJS.Timeout | undefined;
+
+      const cleanup = () => {
+        if (closed) return;
+        closed = true;
+        if (timer) clearInterval(timer);
+        timer = undefined;
+        reply.raw.end();
+      };
+
       const write = async () => {
+        if (closed) return;
+        // Re-check admin status each tick so removing a user from
+        // ADMIN_EMAILS drops their stream within one interval. JWT expiry
+        // isn't enforced here — long-lived connections survive token
+        // expiry, which is acceptable for an admin dashboard.
+        if (!isAdmin(request.user.email)) {
+          request.log.info('admin status SSE: no longer admin, closing');
+          cleanup();
+          return;
+        }
+        let snapshot;
         try {
-          const snapshot = await buildSnapshot(fastify.prisma);
+          snapshot = await buildSnapshot(fastify.prisma);
+        } catch (err) {
+          // Transient DB error — log and try again next tick.
+          request.log.error({ err }, 'admin status SSE snapshot build failed');
+          return;
+        }
+        if (closed) return;
+        try {
           reply.raw.write(`data: ${JSON.stringify(snapshot)}\n\n`);
         } catch (err) {
-          request.log.error({ err }, 'admin status SSE snapshot failed');
+          // Write to a destroyed socket — drop the connection so we don't
+          // keep ticking against a dead stream.
+          request.log.warn({ err }, 'admin status SSE write failed; closing');
+          cleanup();
         }
       };
 
-      await write();
-      const timer = setInterval(write, SSE_INTERVAL_MS);
-
-      const cleanup = () => {
-        clearInterval(timer);
-        reply.raw.end();
-      };
       request.raw.once('close', cleanup);
+      await write();
+      if (!closed) timer = setInterval(write, SSE_INTERVAL_MS);
 
       return reply;
     },

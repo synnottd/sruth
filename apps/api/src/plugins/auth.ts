@@ -55,17 +55,20 @@ declare module 'fastify' {
  * list; we parse on each call so tests (and env reloads) see fresh values.
  * Entries are trimmed, lowercased, and empty pieces skipped so a stray space
  * or trailing comma in the deploy config doesn't silently lock an admin out.
+ *
+ * `email` accepts `undefined` defensively: the JWT `payload` type allows
+ * `email?` even though `user` resolves it to a required string, so a malformed
+ * token without an email claim must fail closed instead of throwing.
  */
-export function isAdmin(email: string): boolean {
+export function isAdmin(email: string | undefined): boolean {
+  if (!email) return false;
   const raw = process.env.ADMIN_EMAILS ?? '';
   const allowed = raw
     .split(',')
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
   if (allowed.length === 0) return false;
-  const candidate = email.toLowerCase();
-  if (candidate === '') return false;
-  return allowed.includes(candidate);
+  return allowed.includes(email.toLowerCase());
 }
 
 // Access tokens carry { sub, email }; refresh tokens carry { sub, tokenId }.

@@ -44,3 +44,14 @@ api.sruth.live {
         respond 404
     }
 }
+
+# bidding-practice app — runs in a sibling compose stack (repo: dave/bidding,
+# deployed to /opt/bidding). We reach it over the external `caddy-net` Docker
+# network; the `bidding` service in that stack publishes nothing on the host.
+# Public — no remote_ip allowlist, unlike sruth.live / api.sruth.live above.
+bidding.sruth.live {
+    encode gzip zstd
+    import security_headers
+
+    reverse_proxy bidding:3000
+}

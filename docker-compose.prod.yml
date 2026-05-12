@@ -15,6 +15,13 @@ services:
       web:
         condition: service_healthy
     restart: unless-stopped
+    # Caddy also fronts the sibling `bidding` stack (bidding.sruth.live). Both
+    # stacks share the external `caddy-net` network so Caddy can DNS-resolve
+    # the `bidding` service by name. Create it once on the host with
+    # `docker network create caddy-net` (bidding's provision.sh does this).
+    networks:
+      - default
+      - caddy-net
 
   postgres:
     image: postgres:16-alpine
@@ -131,3 +138,5 @@ networks:
       config:
         - subnet: 172.20.0.0/16
         - subnet: fd00:dead:beef::/64
+  caddy-net:
+    external: true

@@ -1,12 +1,8 @@
+// After editing this schema, regenerate the ERD with `pnpm docs:erd` at the
+// repo root and commit the updated docs/erd.md alongside your change.
+
 generator client {
   provider = "prisma-client-js"
-}
-
-generator erd {
-  provider    = "prisma-erd-generator"
-  output      = "../../../docs/erd.md"
-  theme       = "neutral"
-  disableEmoji = true
 }
 
 datasource db {
@@ -30,6 +26,7 @@ enum Platform {
   TWITCH
   YOUTUBE
   FACEBOOK
+  KICK
   CUSTOM
 }
 
@@ -43,6 +40,7 @@ enum StreamSessionStatus {
 enum OutputSessionStatus {
   STARTING
   LIVE
+  RETRYING
   ERROR
   STOPPED
 }
@@ -95,6 +93,7 @@ model OutputSession {
   session StreamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   output  Output        @relation(fields: [outputId], references: [id], onDelete: Cascade)
 
+  @@unique([sessionId, outputId])
   @@index([sessionId])
   @@index([outputId])
 }

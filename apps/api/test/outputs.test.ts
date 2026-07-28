@@ -33,6 +33,25 @@ describe('POST /outputs', () => {
     expect(body.enabled).toBe(true);
   });
 
+  it('accepts KICK as a platform', async () => {
+    const headers = await authHeader('kick@example.com');
+    const app = await getApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/outputs',
+      headers,
+      payload: {
+        name: 'My Kick',
+        platform: 'KICK',
+        rtmpUrl: 'rtmps://fa723fc1b171.global-contribute.live-video.net/app/',
+        streamKey: 'kick_abc',
+      },
+    });
+    const body = JSON.parse(res.body);
+    expect(res.statusCode).toBe(201);
+    expect(body.platform).toBe('KICK');
+  });
+
   it('rejects creating more than 5 outputs', async () => {
     const headers = await authHeader('limit@example.com');
     const app = await getApp();

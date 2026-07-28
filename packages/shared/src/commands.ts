@@ -10,6 +10,7 @@ type BaseCommand = {
 
 export type StartCommand = BaseCommand & {
   type: 'start';
+  outputSessionId?: string; // omit for full-session start; present for single-output start
 };
 
 export type StopCommand = BaseCommand & {

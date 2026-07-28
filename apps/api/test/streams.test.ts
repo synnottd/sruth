@@ -56,12 +56,11 @@ describe('GET /streams/active', () => {
   });
 });
 
-describe('POST /streams/:outputId/stop', () => {
-  it('stops a single output session', async () => {
+describe('POST /streams/:outputId/stop (removed)', () => {
+  it('returns 404 — replaced by the PUT /outputs/:id enabled toggle', async () => {
     const { headers } = await setupActiveStream('stop@example.com');
     const app = await getApp();
 
-    // Get the output session ID from active streams
     const activeRes = await app.inject({ method: 'GET', url: '/streams/active', headers });
     const active = JSON.parse(activeRes.body);
     const outputSessionId = active[0].outputSessions[0].id;
@@ -71,8 +70,6 @@ describe('POST /streams/:outputId/stop', () => {
       url: `/streams/${outputSessionId}/stop`,
       headers,
     });
-
-    expect(res.statusCode).toBe(200);
-    expect(JSON.parse(res.body).status).toBe('stopped');
+    expect(res.statusCode).toBe(404);
   });
 });

@@ -26,6 +26,18 @@ describe('GET /stream', () => {
     expect(body.streamKey).toBe(streamKey);
     expect(body.ingestUrl).toBeTypeOf('string');
   });
+
+  it('returns an SRT ingest URL with streamid=publish:<key>', async () => {
+    const { headers, streamKey } = await authHeader('srt@example.com');
+    const app = await getApp();
+    const res = await app.inject({ method: 'GET', url: '/stream', headers });
+    const body = JSON.parse(res.body);
+
+    expect(res.statusCode).toBe(200);
+    expect(body.srtIngestUrl).toBeTypeOf('string');
+    expect(body.srtIngestUrl).toContain(`streamid=publish:${streamKey}`);
+    expect(body.srtIngestUrl).toMatch(/^srt:\/\//);
+  });
 });
 
 describe('POST /stream/key/rotate', () => {

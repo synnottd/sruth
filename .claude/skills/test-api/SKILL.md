@@ -4,7 +4,7 @@ description: Run the API service test suite. Use when user wants to run API test
 allowed-tools: Bash
 ---
 
-Run the `apps/api` integration tests. These tests hit real Postgres and Redis instances, so infrastructure must be running first.
+Run the `apps/api` integration tests. These tests hit a real Postgres instance, so infrastructure must be running first.
 
 ## Steps
 
@@ -14,18 +14,18 @@ If `node_modules` does not exist at the repo root, run `pnpm install`.
 
 ### 2. Start Docker infrastructure
 
-The tests require Postgres and Redis. First, check if they are already running:
+The tests require Postgres. First, check if it is already running:
 
 ```
 docker compose ps --status running --format '{{.Name}}' 2>/dev/null
 ```
 
-Note which services were **already running** before you start anything — you will need this in the cleanup step. If both `sruth-postgres` and `omega-api-redis` are already listed, skip starting them.
+Note whether `sruth-postgres` is **already running** before you start anything — you will need this in the cleanup step. If it is already listed, skip starting it.
 
-If either is not running, start them:
+If it is not running, start it:
 
 ```
-POSTGRES_USER=sruth POSTGRES_PASSWORD=sruth POSTGRES_DB=sruth docker compose up -d --wait postgres redis
+POSTGRES_USER=sruth POSTGRES_PASSWORD=sruth POSTGRES_DB=sruth docker compose up -d --wait postgres
 ```
 
 The `--wait` flag blocks until the healthchecks pass. Do NOT proceed until this completes successfully.
@@ -70,16 +70,16 @@ pnpm --filter @sruth/api db:generate
 pnpm --filter @sruth/api test
 ```
 
-The vitest config already sets all required env vars (`DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, etc.), so you do NOT need to pass them — just run the command as-is.
+The vitest config already sets all required env vars (`DATABASE_URL`, `JWT_SECRET`, etc.), so you do NOT need to pass them — just run the command as-is.
 
 Report the test results summary (pass/fail counts, failed test names if any) to the user.
 
 ### 7. Clean up Docker infrastructure
 
-If you started Docker services in step 2 (they were NOT already running before), shut them down:
+If you started Postgres in step 2 (it was NOT already running before), shut it down:
 
 ```
 docker compose down
 ```
 
-If the services were already running before you started, leave them running — the user likely has them up for development.
+If it was already running before you started, leave it running — the user likely has it up for development.

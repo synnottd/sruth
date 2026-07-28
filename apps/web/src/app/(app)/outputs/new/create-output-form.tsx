@@ -11,6 +11,7 @@ const PLATFORM_PRESETS: Record<Platform, string> = {
   TWITCH: "rtmp://live.twitch.tv/app",
   YOUTUBE: "rtmp://a.rtmp.youtube.com/live2",
   FACEBOOK: "rtmps://live-api-s.facebook.com:443/rtmp/",
+  KICK: "rtmps://fa723fc1b171.global-contribute.live-video.net/app/",
   CUSTOM: "",
 };
 
@@ -77,6 +78,7 @@ export function CreateOutputForm() {
           <option value="TWITCH">Twitch</option>
           <option value="YOUTUBE">YouTube</option>
           <option value="FACEBOOK">Facebook</option>
+          <option value="KICK">Kick</option>
           <option value="CUSTOM">Custom</option>
         </select>
       </div>

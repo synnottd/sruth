@@ -56,8 +56,15 @@ if [ ! -f .env ]; then
 fi
 
 # Launch
+#
+# `--force-recreate` guards against a subtle trap: when the network config
+# changes (e.g. adding an IPv6 subnet), compose recreates `sruth_default`
+# but leaves containers whose own config didn't change attached to the old,
+# now-deleted network — they end up orphaned and unreachable by service name.
+# Recreating every container on each provision keeps them all on the current
+# network.
 echo "Building and starting services..."
-docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml up -d --build --force-recreate --remove-orphans
 
 # Wait for API to be healthy
 echo "Waiting for API to be healthy..."

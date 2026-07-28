@@ -15,8 +15,8 @@ sruth.live {
     import security_headers
     import web_csp
 
-    @root path /
-    handle @root {
+    @landing path / /favicon.svg
+    handle @landing {
         root * /srv/landing
         file_server
         header Cache-Control "public, max-age=300"
@@ -43,4 +43,15 @@ api.sruth.live {
     handle {
         respond 404
     }
+}
+
+# bidding-practice app — runs in a sibling compose stack (repo: dave/bidding,
+# deployed to /opt/bidding). We reach it over the external `caddy-net` Docker
+# network; the `bidding` service in that stack publishes nothing on the host.
+# Public — no remote_ip allowlist, unlike sruth.live / api.sruth.live above.
+bidding.sruth.live {
+    encode gzip zstd
+    import security_headers
+
+    reverse_proxy bidding:3000
 }

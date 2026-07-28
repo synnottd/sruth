@@ -32,6 +32,7 @@ CORS_ORIGIN=https://sruth.live
 COOKIE_DOMAIN=sruth.live
 # Shown to users in the stream-setup UI as their OBS push target.
 INGEST_URL_BASE=rtmp://sruth.live:1935/live
+INGEST_SRT_URL_BASE=srt://sruth.live:9999
 # Inlined into the web client bundle at build time — must be set before
 # \`docker compose build\`. If you change this you must rebuild the web image.
 NEXT_PUBLIC_API_URL=https://api.sruth.live

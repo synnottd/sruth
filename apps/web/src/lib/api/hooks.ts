@@ -1,6 +1,24 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiClient } from "./client";
-import type { Output, Platform, StreamSession, StreamInfo } from "./types";
+import { apiClient, ApiError } from "./client";
+import type { CurrentUser, Output, Platform, StreamSession, StreamInfo } from "./types";
+
+/**
+ * Current session identity. 401s are swallowed to `null` so the nav can hide
+ * admin entries for unauthenticated visitors without throwing.
+ */
+export function useCurrentUser() {
+  return useQuery({
+    queryKey: ["auth", "me"],
+    queryFn: async (): Promise<CurrentUser | null> => {
+      try {
+        return await apiClient.get<CurrentUser>("/auth/me");
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 401) return null;
+        throw err;
+      }
+    },
+  });
+}
 
 export function useOutputs() {
   return useQuery({

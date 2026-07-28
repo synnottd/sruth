@@ -42,3 +42,9 @@ export interface StreamInfo {
   ingestUrl: string;
   srtIngestUrl: string;
 }
+
+export interface CurrentUser {
+  id: string;
+  email: string;
+  isAdmin: boolean;
+}

@@ -7,6 +7,7 @@ import outputRoutes from './routes/outputs.js';
 import streamRoutes from './routes/stream.js';
 import internalStreamRoutes from './routes/internal/stream.js';
 import streamsRoutes from './routes/streams.js';
+import adminStatusRoutes from './routes/admin/status.js';
 import healthRoutes from './routes/health.js';
 
 function addErrorHandler(app: FastifyInstance) {
@@ -62,6 +63,7 @@ export async function buildApp() {
   await app.register(outputRoutes);
   await app.register(streamRoutes);
   await app.register(streamsRoutes);
+  await app.register(adminStatusRoutes);
 
   addErrorHandler(app);
 

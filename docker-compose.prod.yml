@@ -52,6 +52,8 @@ services:
       COOKIE_DOMAIN: ${COOKIE_DOMAIN}
       INGEST_URL_BASE: ${INGEST_URL_BASE}
       INGEST_SRT_URL_BASE: ${INGEST_SRT_URL_BASE}
+      ADMIN_EMAILS: ${ADMIN_EMAILS}
+      MEDIAMTX_API_URL: http://ingest:9997
       NODE_ENV: production
       PORT: '3000'
       INTERNAL_PORT: '3001'

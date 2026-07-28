@@ -1,6 +1,8 @@
 services:
   caddy:
     image: caddy:2-alpine
+    environment:
+      ADMIN_ALLOWED_IPS: ${ADMIN_ALLOWED_IPS}
     ports:
       - '80:80'
       - '443:443'

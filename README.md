@@ -1,6 +1,21 @@
 # Sruth
 
+*working name: omega-stream*
+
 A self-hosted multi-output live streaming relay. Ingest a single RTMP or SRT stream and relay it to multiple destinations (Twitch, YouTube, etc.) simultaneously.
+
+Most multistreaming services (e.g. Restream) re-encode every stream server-side. Sruth's worker instead does a straight stream copy (`ffmpeg -c copy`) rather than transcoding, because relaying is cheap and re-encoding is the expensive part. The goal of this build was to validate ingest, routing, and output management before paying for transcode infrastructure.
+
+## Status
+
+Working MVP, not currently deployed.
+
+Developed AI-assisted throughout; see CLAUDE.md and .claude/skills for the working conventions.
+
+Originally built serverless on AWS (SQS, CDK); migrated to a single Hetzner VM with Docker Compose and Caddy when the serverless complexity wasn't paying for itself pre-customer; then decommissioned rather than keep paying for an idle box. The repo is the artifact.
+
+**Built:** single-ingest RTMP/SRT → multi-output relay, auth, stream/output management, per-destination FFmpeg workers.
+**Designed, not built:** server-side re-encoding (the reason for the worker abstraction), chat aggregation across destinations.
 
 ## Architecture
 
@@ -108,9 +123,10 @@ cd apps/api && pnpm db:generate
 
 ## Deployment
 
-Single-VM deployment on Hetzner with Docker Compose and Caddy for TLS.
+Was deployed as a single-VM Hetzner setup with Docker Compose and Caddy for TLS.
+
+To run it yourself:
 
 ```bash
-# On the VM:
 docker compose -f docker-compose.prod.yml up -d --build
 ```
